@@ -17,9 +17,9 @@ func defaultSocket() string {
     return filepath.Join(home, ".fssh", "agent.sock")
 }
 
-func Start(socketPath string) error { return StartWithOptions(socketPath, true) }
+func Start(socketPath string) error { return StartWithOptions(socketPath, true, 0) }
 
-func StartWithOptions(socketPath string, requireTouchPerSign bool) error {
+func StartWithOptions(socketPath string, requireTouchPerSign bool, ttlSeconds int) error {
     if socketPath == "" {
         socketPath = defaultSocket()
     }
@@ -34,7 +34,7 @@ func StartWithOptions(socketPath string, requireTouchPerSign bool) error {
 
     var ag xagent.Agent
     if requireTouchPerSign {
-        sa, err := newSecureAgent()
+        sa, err := newSecureAgentWithTTL(ttlSeconds)
         if err != nil { ln.Close(); return err }
         ag = sa
     } else {

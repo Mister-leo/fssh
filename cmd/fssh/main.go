@@ -14,6 +14,8 @@ import (
 
     "fssh/internal/store"
     "fssh/internal/keychain"
+    "fssh/internal/config"
+    "fssh/internal/log"
     agentserver "fssh/internal/agent"
     "golang.org/x/term"
 )
@@ -43,6 +45,10 @@ func main() {
         cmdRekey()
     case "shell":
         runShell()
+    case "sshd-align":
+        cmdAlignSSHD()
+    case "config-gen":
+        cmdConfigGen()
     default:
         usage()
         os.Exit(2)
@@ -50,7 +56,7 @@ func main() {
 }
 
 func usage() {
-    fmt.Fprintf(os.Stderr, "usage: fssh <init|import|list|export|remove|rekey|status|agent|shell>\n")
+    fmt.Fprintf(os.Stderr, "usage: fssh <init|import|list|export|remove|rekey|status|agent|shell|sshd-align|config-gen>\n")
 }
 
 func cmdInit() {
@@ -187,11 +193,14 @@ func cmdStatus() {
 }
 
 func cmdAgent() {
+    cfg, _ := config.Load()
     fs := flag.NewFlagSet("agent", flag.ExitOnError)
-    sock := fs.String("socket", "", "unix socket path for SSH agent")
-    require := fs.Bool("require-touch-id-per-sign", true, "require Touch ID on every signature")
+    sock := fs.String("socket", cfg.Socket, "unix socket path for SSH agent")
+    require := fs.Bool("require-touch-id-per-sign", cfg.RequireTouchPerSign, "require Touch ID on every signature")
+    ttl := fs.Int("unlock-ttl-seconds", cfg.UnlockTTLSeconds, "Touch ID unlock TTL in seconds (secure mode)")
     fs.Parse(os.Args[2:])
-    err := agentserver.StartWithOptions(*sock, *require)
+    log.Init(cfg)
+    err := agentserver.StartWithOptions(*sock, *require, *ttl)
     if err != nil {
         fatal(err)
     }

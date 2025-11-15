@@ -40,7 +40,7 @@ type Record struct {
 
 func KeysDir() string {
     home, _ := os.UserHomeDir()
-    return filepath.Join(home, ".fingerpass", "keys")
+    return filepath.Join(home, ".fssh", "keys")
 }
 
 func ensureDirs() error {

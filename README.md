@@ -1,5 +1,7 @@
 # fssh
 
+macOS 安装与开机自启请参阅 docs/macos.md，其中包含 `launchd` 配置示例（contrib/com.fssh.agent.plist）。
+
 在 macOS 上通过 Touch ID 解锁对称主密钥，解密本地加密的 SSH 私钥并用于登录；同时提供兼容 OpenSSH 的 ssh-agent。
 
 ## 功能概述
@@ -35,7 +37,7 @@
   - 生成并写入主密钥到 Keychain（GenericPassword，解锁前会触发 Touch ID）
   - 可选：`--force` 覆盖已存在主密钥
 - `fssh import --alias <name> --file <path> [--passphrase <p>] [--comment <c>]`
-  - 解析 OpenSSH 私钥，统一序列化为 PKCS#8 DER，并加密保存为 `~/.fingerpass/keys/<alias>.enc`
+  - 解析 OpenSSH 私钥，统一序列化为 PKCS#8 DER，并加密保存为 `~/.fssh/keys/<alias>.enc`
 - `fssh list`
   - 列出已导入的别名、指纹与创建时间
 - `fssh export --alias <name> --out <path> [--ask-passphrase|--passphrase-file <pfile>|--passphrase-stdin] [--force]`
@@ -64,7 +66,7 @@
 - 记录元数据：保存 `pubkey`（base64 的 `Marshal()`）、`fingerprint`，agent 列表无需解密
 
 ## 存储格式（fingerpass/v1）
-JSON 文件 `~/.fingerpass/keys/<alias>.enc` 字段：
+JSON 文件 `~/.fssh/keys/<alias>.enc` 字段：
 - `version`、`alias`、`fingerprint`、`pubkey`、`key_type`（PKCS8）、`hkdf_salt`、`nonce`、`ciphertext`、`created_at`、`comment`
 
 ## 常见问题
