@@ -142,7 +142,7 @@ func (p *OTPProvider) UnlockMasterKey() ([]byte, error) {
 	}
 
 	// 2. 提示输入 TOTP 验证码
-	code, err := otp.PromptCode("请输入6位验证码: ")
+	code, err := otp.PromptCode(fmt.Sprintf("请输入%d位验证码: ", p.config.Digits))
 	if err != nil {
 		return nil, fmt.Errorf("读取验证码失败: %w", err)
 	}

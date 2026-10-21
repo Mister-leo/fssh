@@ -9,6 +9,7 @@ import (
     "strings"
     "syscall"
 
+    "fssh/internal/i18n"
     "fssh/internal/sshconfig"
     "github.com/peterh/liner"
 )
@@ -72,6 +73,7 @@ func runShell() {
         }
     }()
 
+    fmt.Println(i18n.T("shell.banner"))
     for {
         line, err := l.Prompt("fssh> ")
         if err != nil {

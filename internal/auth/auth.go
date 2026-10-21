@@ -50,7 +50,7 @@ func GetAuthProvider(masterKeyTTL int) (AuthProvider, error) {
 	case ModeTouchID:
 		provider := NewTouchIDProvider(masterKeyTTL)
 		if !provider.IsAvailable() {
-			return nil, errors.New("Touch ID 不可用，请运行: fssh switch-to-otp")
+			return nil, errors.New("Touch ID 模式未初始化：Keychain 中没有 master key，请运行: fssh init")
 		}
 		return provider, nil
 
@@ -131,8 +131,12 @@ func SaveMode(mode AuthMode) error {
 	}
 
 	// 写入文件
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("保存认证模式配置失败: %w", err)
+	}
+	// WriteFile 不会修改已存在文件的权限，旧版本创建的文件是 0644
+	if err := os.Chmod(path, 0600); err != nil {
+		return fmt.Errorf("设置认证模式配置权限失败: %w", err)
 	}
 
 	return nil

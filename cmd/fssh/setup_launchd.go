@@ -32,8 +32,14 @@ func setupLaunchAgent() error {
 		return fmt.Errorf("failed to create LaunchAgents directory: %w", err)
 	}
 
+	// Logs go to a private directory instead of world-readable /tmp
+	logDir := filepath.Join(home, "Library", "Logs", "fssh")
+	if err := os.MkdirAll(logDir, 0700); err != nil {
+		return fmt.Errorf("failed to create log directory: %w", err)
+	}
+
 	// Generate plist content
-	plistContent := generatePlistContent()
+	plistContent := generatePlistContent(filepath.Join(logDir, "agent.log"))
 
 	// Write plist file
 	if err := os.WriteFile(plistPath, []byte(plistContent), 0644); err != nil {
@@ -54,8 +60,8 @@ func setupLaunchAgent() error {
 }
 
 // generatePlistContent generates the plist file content
-func generatePlistContent() string {
-	return `<?xml version="1.0" encoding="UTF-8"?>
+func generatePlistContent(logPath string) string {
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
@@ -71,10 +77,10 @@ func generatePlistContent() string {
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/fssh-agent.log</string>
+    <string>%[1]s</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/fssh-agent.log</string>
+    <string>%[1]s</string>
   </dict>
 </plist>
-`
+`, logPath)
 }

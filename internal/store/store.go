@@ -12,6 +12,8 @@ import (
     "errors"
     "os"
     "path/filepath"
+    "regexp"
+    "strings"
     "time"
 
     "fssh/internal/crypt"
@@ -41,6 +43,97 @@ type Record struct {
 func KeysDir() string {
     home, _ := os.UserHomeDir()
     return filepath.Join(home, ".fssh", "keys")
+}
+
+var (
+    ErrInvalidAlias = errors.New("invalid alias")
+    ErrNotFound     = errors.New("key not found")
+
+    aliasPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+)
+
+// ValidateAlias checks the naming rule for new aliases: letters, digits,
+// '.', '_', '-', starting with a letter or digit, at most 64 characters.
+func ValidateAlias(alias string) error {
+    if !aliasPattern.MatchString(alias) {
+        return ErrInvalidAlias
+    }
+    return nil
+}
+
+// checkAliasPath only rejects aliases that would escape KeysDir. It is used
+// for existing records, which may predate ValidateAlias.
+func checkAliasPath(alias string) error {
+    if alias == "" || alias == "." || alias == ".." || strings.ContainsAny(alias, "/\\\x00") {
+        return ErrInvalidAlias
+    }
+    return nil
+}
+
+// RecordPath returns the encrypted file path for alias.
+func RecordPath(alias string) (string, error) {
+    if err := checkAliasPath(alias); err != nil {
+        return "", err
+    }
+    return filepath.Join(KeysDir(), alias+".enc"), nil
+}
+
+// LoadMeta reads the unencrypted metadata of a record. Returns ErrNotFound
+// if the alias does not exist.
+func LoadMeta(alias string) (*EncryptedFile, error) {
+    path, err := RecordPath(alias)
+    if err != nil {
+        return nil, err
+    }
+    b, err := os.ReadFile(path)
+    if err != nil {
+        if errors.Is(err, os.ErrNotExist) {
+            return nil, ErrNotFound
+        }
+        return nil, err
+    }
+    var ef EncryptedFile
+    if err := json.Unmarshal(b, &ef); err != nil {
+        return nil, err
+    }
+    return &ef, nil
+}
+
+// ListMeta returns metadata of all records, skipping unreadable files.
+func ListMeta() ([]EncryptedFile, error) {
+    entries, err := os.ReadDir(KeysDir())
+    if err != nil {
+        if errors.Is(err, os.ErrNotExist) {
+            return nil, nil
+        }
+        return nil, err
+    }
+    var metas []EncryptedFile
+    for _, e := range entries {
+        if e.IsDir() || !strings.HasSuffix(e.Name(), ".enc") {
+            continue
+        }
+        m, err := LoadMeta(strings.TrimSuffix(e.Name(), ".enc"))
+        if err != nil {
+            continue
+        }
+        metas = append(metas, *m)
+    }
+    return metas, nil
+}
+
+// FindByFingerprint returns the alias of the record with fingerprint fp.
+func FindByFingerprint(fp string) (string, bool, error) {
+    metas, err := ListMeta()
+    if err != nil {
+        return "", false, err
+    }
+    for _, m := range metas {
+        if m.Fingerprint == fp {
+            return m.Alias, true, nil
+        }
+    }
+    return "", false, nil
 }
 
 func ensureDirs() error {
@@ -85,6 +178,10 @@ func NewRecordFromPrivateKeyBytes(alias string, keyFileBytes []byte, passphrase 
 }
 
 func SaveEncryptedRecord(rec *Record, masterKey []byte) error {
+    path, err := RecordPath(rec.Alias)
+    if err != nil {
+        return err
+    }
     if err := ensureDirs(); err != nil {
         return err
     }
@@ -127,12 +224,14 @@ func SaveEncryptedRecord(rec *Record, masterKey []byte) error {
     if err != nil {
         return err
     }
-    path := filepath.Join(KeysDir(), rec.Alias+".enc")
     return os.WriteFile(path, b, 0600)
 }
 
 func LoadDecryptedRecord(alias string, masterKey []byte) (*Record, error) {
-    path := filepath.Join(KeysDir(), alias+".enc")
+    path, err := RecordPath(alias)
+    if err != nil {
+        return nil, err
+    }
     b, err := os.ReadFile(path)
     if err != nil {
         return nil, err

@@ -15,18 +15,33 @@ import (
     "fssh/internal/store"
     "fssh/internal/keychain"
     "fssh/internal/config"
+    "fssh/internal/i18n"
     "fssh/internal/log"
+    "fssh/internal/otp"
     agentserver "fssh/internal/agent"
     "golang.org/x/term"
 )
 
+// commandNames lists commands in the order shown by `fssh help`.
+var commandNames = []string{
+    "init", "import", "list", "export", "remove", "rekey", "status",
+    "agent", "shell", "config-gen", "sshd-align", "version", "help",
+}
+
 func main() {
     if len(os.Args) < 2 {
+        if !isInitialized() {
+            fmt.Println(i18n.T("cli.not_initialized"))
+        }
         runShell()
         return
     }
     cmd := os.Args[1]
     switch cmd {
+    case "help", "-h", "--help":
+        cmdHelp(os.Args[2:])
+    case "version", "-v", "--version":
+        fmt.Println(versionString())
     case "init":
         cmdInit()
     case "import":
@@ -50,13 +65,70 @@ func main() {
     case "config-gen":
         cmdConfigGen()
     default:
-        usage()
+        fmt.Fprintln(os.Stderr, i18n.T("cli.unknown_command", cmd))
+        fmt.Fprintln(os.Stderr)
+        printHelp(os.Stderr)
         os.Exit(2)
     }
 }
 
-func usage() {
-    fmt.Fprintf(os.Stderr, "usage: fssh <init|import|list|export|remove|rekey|status|agent|shell|sshd-align|config-gen>\n")
+func printHelp(w io.Writer) {
+    fmt.Fprintln(w, i18n.T("help.title"))
+    fmt.Fprintln(w)
+    fmt.Fprintln(w, i18n.T("help.usage"))
+    fmt.Fprintln(w)
+    fmt.Fprintln(w, i18n.T("help.commands"))
+    for _, name := range commandNames {
+        fmt.Fprintf(w, "  %-12s %s\n", name, i18n.T("cmd."+name))
+    }
+    fmt.Fprintln(w)
+    fmt.Fprintln(w, i18n.T("help.footer"))
+}
+
+// cmdHelp prints general help, or `fssh help <command>` shows that command's flags.
+func cmdHelp(args []string) {
+    if len(args) == 0 {
+        printHelp(os.Stdout)
+        return
+    }
+    name := args[0]
+    known := false
+    for _, c := range commandNames {
+        if c == name {
+            known = true
+            break
+        }
+    }
+    if !known {
+        fmt.Fprintln(os.Stderr, i18n.T("cli.unknown_command", name))
+        os.Exit(2)
+    }
+    fmt.Printf("fssh %s - %s\n\n", name, i18n.T("cmd."+name))
+    switch name {
+    case "list", "status", "shell", "version", "help":
+        return // no flags
+    }
+    // Re-dispatch with -h: each command's FlagSet prints its flags and exits 0.
+    os.Args = []string{os.Args[0], name, "-h"}
+    main()
+}
+
+// isInitialized reports whether `fssh init` has run, without touching the
+// Keychain (which could trigger an authorization prompt).
+func isInitialized() bool {
+    home, err := os.UserHomeDir()
+    if err != nil {
+        return false
+    }
+    for _, p := range []string{
+        filepath.Join(home, ".fssh", "auth_mode.json"),
+        store.KeysDir(),
+    } {
+        if _, err := os.Stat(p); err == nil {
+            return true
+        }
+    }
+    return false
 }
 
 func cmdInit() {
@@ -108,39 +180,59 @@ func cmdImport() {
     passFile := fs.String("passphrase-file", "", "read passphrase from file path")
     passStdin := fs.Bool("passphrase-stdin", false, "read passphrase from stdin")
     comment := fs.String("comment", "", "optional comment")
+    force := fs.Bool("force", false, "overwrite an existing alias / allow importing an already imported key")
     fs.Parse(os.Args[2:])
 
     if *alias == "" || *file == "" {
-        fatal(errors.New("alias and file are required"))
+        fatal(errors.New(i18n.T("import.err_args_required")))
     }
 
-    // 1. 读取私钥文件
+    // 1. 校验别名，已存在时先失败，避免白输密码
+    if err := store.ValidateAlias(*alias); err != nil {
+        fatal(aliasError(*alias, err))
+    }
+    if taken, err := aliasTaken(*alias); err != nil {
+        fatal(err)
+    } else if taken && !*force {
+        fatal(errors.New(i18n.T("import.err_alias_exists", *alias)))
+    }
+
+    // 2. 读取私钥文件
     b, err := os.ReadFile(*file)
     if err != nil {
-        fatal(err)
+        if errors.Is(err, os.ErrNotExist) {
+            fatal(errors.New(i18n.T("import.err_file_not_found", *file)))
+        }
+        fatal(errors.New(i18n.T("import.err_read_file", err)))
     }
 
-    // 2. 先询问私钥密码
-    p, err := resolvePassphrase(*pass, *ask, *passFile, *passStdin, "Input key passphrase: ")
+    // 3. 解密私钥并创建记录；在终端中且未指定文件/stdin 密码源时，按需提示输入密码
+    p, err := resolvePassphrase(*pass, *ask, *passFile, *passStdin, i18n.T("import.prompt_passphrase"))
     if err != nil { fatal(err) }
-
-    // 3. 解密私钥并创建记录（验证私钥和密码是否正确）
-    rec, err := store.NewRecordFromPrivateKeyBytes(*alias, b, p, *comment)
+    interactive := term.IsTerminal(int(os.Stdin.Fd())) && *passFile == "" && !*passStdin && *pass == ""
+    rec, err := parseKeyWithRetry(*alias, b, p, *comment, interactive, "")
     if err != nil {
         fatal(err)
     }
 
-    // 4. 私钥验证成功后，再要求 Touch ID 获取 master key
+    // 4. 同一把私钥已用其他别名导入时提示
+    if existing, ok, err := store.FindByFingerprint(rec.Fingerprint); err != nil {
+        fatal(err)
+    } else if ok && existing != *alias && !*force {
+        fatal(errors.New(i18n.T("import.err_already_imported", existing, rec.Fingerprint)))
+    }
+
+    // 5. 私钥验证成功后，再要求 Touch ID 获取 master key
     mk, err := keychain.LoadMasterKey()
     if err != nil {
         fatal(err)
     }
 
-    // 5. 用 master key 加密并保存私钥
+    // 6. 用 master key 加密并保存私钥
     if err := store.SaveEncryptedRecord(rec, mk); err != nil {
         fatal(err)
     }
-    fmt.Printf("imported %s fingerprint=%s\n", rec.Alias, rec.Fingerprint)
+    fmt.Println(i18n.T("import.done", rec.Alias, rec.Fingerprint))
 }
 
 func cmdList() {
@@ -238,12 +330,26 @@ func cmdAgent() {
 func cmdRemove() {
     fs := flag.NewFlagSet("remove", flag.ExitOnError)
     alias := fs.String("alias", "", "alias name")
+    yes := fs.Bool("yes", false, "skip the confirmation prompt")
     fs.Parse(os.Args[2:])
-    if *alias == "" { fatal(errors.New("alias is required")) }
+    if *alias == "" { fatal(errors.New(i18n.T("remove.err_alias_required"))) }
+
+    // 先确认密钥存在并让用户确认，再要求认证
+    meta, err := store.LoadMeta(*alias)
+    if err != nil { fatal(aliasError(*alias, err)) }
+    if !*yes {
+        if !term.IsTerminal(int(os.Stdin.Fd())) { fatal(errors.New(i18n.T("remove.err_need_yes"))) }
+        if !otp.PromptConfirm(i18n.T("remove.confirm", meta.Alias, meta.Fingerprint)) {
+            fmt.Println(i18n.T("remove.cancelled"))
+            return
+        }
+    }
+
     if _, err := keychain.LoadMasterKey(); err != nil { fatal(err) }
-    path := filepath.Join(store.KeysDir(), *alias+".enc")
+    path, err := store.RecordPath(*alias)
+    if err != nil { fatal(aliasError(*alias, err)) }
     if err := os.Remove(path); err != nil { fatal(err) }
-    fmt.Printf("removed %s\n", *alias)
+    fmt.Println(i18n.T("remove.done", *alias))
 }
 
 func cmdRekey() {

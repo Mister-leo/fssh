@@ -118,19 +118,6 @@ func importSSHKeys() error {
 	for i, key := range keysToImport {
 		fmt.Printf("[%d/%d] Importing %s...\n", i+1, len(keysToImport), key.Filename)
 
-		// Prompt for alias with suggestion
-		suggestedAlias := generateAlias(key.Filename)
-		aliasPrompt := fmt.Sprintf("  Alias [%s]: ", suggestedAlias)
-		alias, err := otp.PromptInput(aliasPrompt)
-		if err != nil {
-			fmt.Printf("  ❌ Failed to read alias: %v\n", err)
-			continue
-		}
-
-		if alias == "" {
-			alias = suggestedAlias
-		}
-
 		// Read key file
 		keyData, err := os.ReadFile(key.Path)
 		if err != nil {
@@ -138,22 +125,25 @@ func importSSHKeys() error {
 			continue
 		}
 
-		// Prompt for passphrase if encrypted
-		var passphrase string
-		if key.IsEncrypted {
-			passphrase, err = otp.PromptPassword("  Enter passphrase: ")
-			if err != nil {
-				fmt.Printf("  ❌ Failed to read passphrase: %v\n", err)
-				continue
-			}
-		}
-
-		// Create record
-		rec, err := store.NewRecordFromPrivateKeyBytes(alias, keyData, passphrase, "")
+		// Parse first (prompting for the passphrase if needed) so that an
+		// already imported key is skipped before asking for an alias
+		rec, err := parseKeyWithRetry("", keyData, "", "", true, "  ")
 		if err != nil {
-			fmt.Printf("  ❌ Failed to parse key: %v\n", err)
+			fmt.Printf("  ❌ %v\n", err)
 			continue
 		}
+		if existing, ok, _ := store.FindByFingerprint(rec.Fingerprint); ok {
+			fmt.Printf("  ✓ Already imported as '%s', skipped\n", existing)
+			continue
+		}
+
+		// Prompt for alias with suggestion until it is valid and unused
+		alias, err := promptNewAlias(uniqueAlias(generateAlias(key.Filename)))
+		if err != nil {
+			fmt.Printf("  ❌ Failed to read alias: %v\n", err)
+			continue
+		}
+		rec.Alias = alias
 
 		// Save encrypted record
 		if err := store.SaveEncryptedRecord(rec, mk); err != nil {
@@ -289,6 +279,66 @@ func generateAlias(filename string) string {
 	}
 
 	return alias
+}
+
+// sanitizeAlias turns an arbitrary filename into a valid alias.
+func sanitizeAlias(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	alias := strings.TrimLeft(b.String(), "._-")
+	if len(alias) > 56 {
+		alias = alias[:56] // leave room for a "-N" suffix
+	}
+	if alias == "" {
+		alias = "key"
+	}
+	return alias
+}
+
+// uniqueAlias makes a suggested alias valid and unused, e.g. "rsa" -> "rsa-2".
+func uniqueAlias(base string) string {
+	base = sanitizeAlias(base)
+	alias := base
+	for i := 2; ; i++ {
+		if taken, err := aliasTaken(alias); err != nil || !taken {
+			return alias
+		}
+		alias = fmt.Sprintf("%s-%d", base, i)
+	}
+}
+
+// promptNewAlias asks for an alias until it is valid and not already used.
+// Empty input accepts the suggestion, which must itself be valid and unused.
+func promptNewAlias(suggested string) (string, error) {
+	for {
+		alias, err := otp.PromptInput(fmt.Sprintf("  Alias [%s]: ", suggested))
+		if err != nil {
+			return "", err
+		}
+		if alias == "" {
+			alias = suggested
+		}
+		if err := store.ValidateAlias(alias); err != nil {
+			fmt.Printf("  ❌ %v\n", aliasError(alias, err))
+			continue
+		}
+		taken, err := aliasTaken(alias)
+		if err != nil {
+			return "", err
+		}
+		if taken {
+			fmt.Printf("  ❌ Alias '%s' is already used, choose another\n", alias)
+			continue
+		}
+		return alias, nil
+	}
 }
 
 // parseSelection parses user selection string into indices

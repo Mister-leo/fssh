@@ -75,6 +75,7 @@
   - 位置：`cmd/fssh/main.go`（`cmdStatus`）
 
 - [ ] **P1-9 细节问题**
+  - 进展（2026-10-21）：验证码位数提示、`switch-to-otp` 引用、日志与 `auth_mode.json` 权限已修复；`internal/i18n` 已建好，全面迁移文案待做
   - 中英文混杂（向导英文，错误多为中文）
   - 8 位验证码仍提示“请输入6位验证码”（`internal/auth/otp.go:145`）
   - 错误提示引用不存在的 `fssh switch-to-otp`（`internal/auth/auth.go:53`）
@@ -82,7 +83,7 @@
 
 ## P2：交付、增长与工程质量
 
-- [ ] **P2-1 CI 发布构建失败**
+- [x] **P2-1 CI 发布构建失败**
   - 现象：`CGO_ENABLED=0` 时 `internal/macos` 被构建约束全部排除，构建报错；Release 无可用二进制（已本地复现）
   - 位置：`.github/workflows/build.yml:44`（且 runner 为 ubuntu，需改为 macOS + CGo）
 
@@ -106,15 +107,15 @@
   - 场景：同时导入 GitHub 个人/公司两把 key，`git push` 用 Agent 中第一把被接受的 key，推到错误账号；密钥 ≥6 把时服务器报 `Too many authentication failures`；所有公钥都会暴露给每一台服务器
   - 原因：Shell `add` 选“Use fssh agent”只写 `IdentityAgent`，不绑定具体 key（`cmd/fssh/shell_commands.go:119-135`）；没有导出 `.pub` 供 `IdentityFile` + `IdentitiesOnly` 使用
 
-- [ ] **U-2 `fssh import` 同名 alias 静默覆盖**
+- [x] **U-2 `fssh import` 同名 alias 静默覆盖**
   - 场景：误用已有别名导入，旧私钥被直接覆盖且无提示；若原文件已删除则永久丢失
   - 位置：`cmd/fssh/main.go`（`cmdImport` 未检查 `.enc` 是否存在）
 
-- [ ] **U-3 导入加密私钥不会自动询问密码（实测）**
+- [x] **U-3 导入加密私钥不会自动询问密码（实测）**
   - 现象：不加 `--ask-passphrase` 时直接报 `error: ssh: this private key is passphrase protected`；密码错误报 `x509: decryption password incorrect`，均为底层库原文
   - 期望：TTY 下检测到加密自动提示输入；错误信息人话化并给出下一步
 
-- [ ] **U-4 没有帮助和版本信息（实测）**
+- [x] **U-4 没有帮助和版本信息（实测）**
   - 现象：`fssh help` / `--help` / `version` 都只输出一行 usage 且退出码 2；无子命令说明、无版本号，用户无法判断自己装的版本
   - 无参数运行直接进入 Shell，新用户不知道这是什么
 
@@ -142,6 +143,6 @@
 - [ ] **U-11 无卸载/停用路径**
   - 向导改动了 `/usr/local/bin`、LaunchAgent、`~/.ssh/config`、Keychain，没有 `fssh uninstall`；只删二进制会导致 LaunchAgent 反复拉起失败
 
-- [ ] **U-12 `remove` 先要求认证再检查是否存在**
+- [x] **U-12 `remove` 先要求认证再检查是否存在**
   - 现象：输错别名也要先按指纹，按完才报 `no such file or directory`
   - 位置：`cmd/fssh/main.go:241`
