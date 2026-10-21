@@ -48,7 +48,7 @@ func GetAuthProvider(masterKeyTTL int) (AuthProvider, error) {
 
 	switch mode {
 	case ModeTouchID:
-		provider := NewTouchIDProvider()
+		provider := NewTouchIDProvider(masterKeyTTL)
 		if !provider.IsAvailable() {
 			return nil, errors.New("Touch ID 不可用，请运行: fssh switch-to-otp")
 		}

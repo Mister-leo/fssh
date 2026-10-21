@@ -24,6 +24,20 @@ func defaultSocket() string {
     return filepath.Join(home, ".fssh", "agent.sock")
 }
 
+const defaultUnlockTTLSeconds = 600
+
+// Default returns a config with all defaults applied.
+// Non-string defaults live here rather than in ApplyDefaults, because a zero
+// value (false / 0) can be an explicit user choice.
+func Default() *Config {
+    c := &Config{
+        RequireTouchPerSign: true,
+        UnlockTTLSeconds:    defaultUnlockTTLSeconds,
+    }
+    c.ApplyDefaults()
+    return c
+}
+
 func Load() (*Config, error) {
     home, err := os.UserHomeDir()
     if err != nil {
@@ -33,27 +47,26 @@ func Load() (*Config, error) {
     b, err := os.ReadFile(p)
     if err != nil {
         if errors.Is(err, os.ErrNotExist) {
-            c := &Config{}
-            c.ApplyDefaults()
-            return c, nil
+            return Default(), nil
         }
         return nil, err
     }
-    var c Config
-    if err := json.Unmarshal(b, &c); err != nil {
+    // Unmarshal over the defaults so that fields absent from the file keep
+    // their default while explicit values (including false / 0) win.
+    c := Default()
+    if err := json.Unmarshal(b, c); err != nil {
         return nil, err
     }
     c.Socket = expandHome(c.Socket)
     c.LogOut = expandHome(c.LogOut)
     c.LogErr = expandHome(c.LogErr)
     c.ApplyDefaults()
-    return &c, nil
+    return c, nil
 }
 
+// ApplyDefaults fills empty string fields.
 func (c *Config) ApplyDefaults() {
     if c.Socket == "" { c.Socket = defaultSocket() }
-    // default true unless explicitly set false in file
-    if !c.RequireTouchPerSign { c.RequireTouchPerSign = true }
     if c.LogLevel == "" { c.LogLevel = "info" }
     if c.LogFormat == "" { c.LogFormat = "plain" }
     if c.LogTimeFormat == "" { c.LogTimeFormat = "2006-01-02T15:04:05Z07:00" }

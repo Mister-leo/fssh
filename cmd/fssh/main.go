@@ -220,15 +220,17 @@ func cmdStatus() {
 }
 
 func cmdAgent() {
-    cfg, _ := config.Load()
+    cfg, err := config.Load()
+    if err != nil {
+        fatal(fmt.Errorf("load ~/.fssh/config.json: %w", err))
+    }
     fs := flag.NewFlagSet("agent", flag.ExitOnError)
     sock := fs.String("socket", cfg.Socket, "unix socket path for SSH agent")
     require := fs.Bool("require-touch-id-per-sign", cfg.RequireTouchPerSign, "require Touch ID on every signature")
-    ttl := fs.Int("unlock-ttl-seconds", cfg.UnlockTTLSeconds, "Touch ID unlock TTL in seconds (secure mode)")
+    ttl := fs.Int("unlock-ttl-seconds", cfg.UnlockTTLSeconds, "unlock cache TTL in seconds, 0 = authenticate on every signature (secure mode)")
     fs.Parse(os.Args[2:])
     log.Init(cfg)
-    err := agentserver.StartWithOptions(*sock, *require, *ttl)
-    if err != nil {
+    if err := agentserver.StartWithOptions(*sock, *require, *ttl); err != nil {
         fatal(err)
     }
 }

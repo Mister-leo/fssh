@@ -22,7 +22,8 @@ func cmdConfigGen() {
     globalAlgos := fs.Bool("global-algos", false, "write RSA-SHA2 algorithms to Host *")
     fs.Parse(os.Args[2:])
     if *host == "" { fatal(errors.New("host is required")) }
-    cfg, _ := config.Load()
+    cfg, err := config.Load()
+    if err != nil { fatal(fmt.Errorf("load ~/.fssh/config.json: %w", err)) }
     block := buildHostBlock(*host, *user, *port, cfg.Socket)
     if !*write {
         fmt.Print(block)
