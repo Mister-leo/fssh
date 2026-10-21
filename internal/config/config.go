@@ -17,6 +17,7 @@ type Config struct {
     LogLevel             string `json:"log_level"`
     LogFormat            string `json:"log_format"`
     LogTimeFormat        string `json:"log_time_format"`
+    Language             string `json:"language"` // "zh" or "en", empty = follow system
 }
 
 func defaultSocket() string {
