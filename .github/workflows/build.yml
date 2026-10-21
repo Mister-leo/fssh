@@ -3,17 +3,15 @@ name: Build macOS Binaries
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main, master ]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        goos: [darwin]
-        goarch: [amd64, arm64]
+  test:
+    # Touch ID and Keychain bindings use CGo with macOS frameworks,
+    # so tests and builds must run on macOS with CGO enabled.
+    runs-on: macos-14
 
     steps:
     - name: Checkout code
@@ -22,74 +20,94 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.21'
+        go-version-file: go.mod
 
-    - name: Verify Go version
-      run: go version
+    - name: Vet
+      run: go vet ./...
 
-    - name: Cache Go modules
-      uses: actions/cache@v4
+    - name: Test
+      run: go test -race ./...
+
+  build:
+    needs: test
+    runs-on: macos-14
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
       with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ matrix.goos }}-${{ matrix.goarch }}-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-${{ matrix.goos }}-${{ matrix.goarch }}-
-          ${{ runner.os }}-go-${{ matrix.goos }}-
-          ${{ runner.os }}-go-
+        fetch-depth: 0   # tags are needed by git describe
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
 
     - name: Build
       env:
-        CGO_ENABLED: 0
+        CGO_ENABLED: 1
+        GOOS: darwin
       run: |
+        VERSION=$(git describe --tags --always --dirty)
+        LDFLAGS="-s -w -X main.version=${VERSION} -X main.commit=${GITHUB_SHA::7}"
         mkdir -p dist
-        GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build \
-          -ldflags="-s -w" \
-          -trimpath \
-          -o dist/fssh-${{ matrix.goos }}-${{ matrix.goarch }} \
-          ./cmd/fssh
+        for arch in arm64 amd64; do
+          GOARCH=$arch go build -trimpath -ldflags "$LDFLAGS" -o dist/fssh-$arch ./cmd/fssh
+        done
+        lipo -create -output dist/fssh-universal dist/fssh-arm64 dist/fssh-amd64
+        lipo -info dist/fssh-universal
+        ./dist/fssh-universal version
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: fssh-${{ matrix.goos }}-${{ matrix.goarch }}
-        path: dist/fssh-${{ matrix.goos }}-${{ matrix.goarch }}
+        name: fssh-macos
+        path: dist/
         retention-days: 30
 
   create-release:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Download all artifacts
+    - name: Download artifacts
       uses: actions/download-artifact@v4
+      with:
+        name: fssh-macos
+        path: dist
 
-    - name: Display structure of downloaded files
-      run: find . -type f -name "fssh-*" | sort
-
-    - name: Create tarball
+    - name: Package
       run: |
         mkdir -p release
-        cp fssh-darwin-amd64/fssh-darwin-amd64 release/fssh-amd64
-        cp fssh-darwin-arm64/fssh-darwin-arm64 release/fssh-arm64
-        tar -czf release/fssh-macos.tar.gz -C release fssh-amd64 fssh-arm64
-        shasum -a 256 release/fssh-macos.tar.gz > release/fssh-macos.tar.gz.sha256
-        cat release/fssh-macos.tar.gz.sha256
+        cp dist/fssh-universal release/fssh
+        chmod +x release/fssh
+        tar -czf release/fssh-macos-universal.tar.gz -C release fssh
+        cd release && shasum -a 256 fssh-macos-universal.tar.gz > fssh-macos-universal.tar.gz.sha256
+        cat fssh-macos-universal.tar.gz.sha256
 
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
-        files: release/*
+        files: |
+          release/fssh-macos-universal.tar.gz
+          release/fssh-macos-universal.tar.gz.sha256
         body: |
-          ## Binaries
-          - `fssh-amd64` - Intel Macs (x86_64)
-          - `fssh-arm64` - Apple Silicon Macs (M1, M2, M3)
-          - `fssh-macos.tar.gz` - Both binaries packed
-          - `fssh-macos.tar.gz.sha256` - SHA256 checksums
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ## 安装 / Install
+
+          通用二进制，同时支持 Apple Silicon 和 Intel Mac。
+          Universal binary for both Apple Silicon and Intel Macs.
+
+          ```bash
+          tar -xzf fssh-macos-universal.tar.gz
+          # 该二进制未经 Apple 签名，需解除下载隔离，否则会被 Gatekeeper 拦截
+          # The binary is not signed by Apple; remove the quarantine flag or Gatekeeper will block it
+          xattr -d com.apple.quarantine fssh
+          sudo mv fssh /usr/local/bin/
+          fssh version
+          ```
+
+          升级后首次访问 Keychain 时，macOS 可能再次弹出授权框，点击「始终允许」即可。
+          After upgrading, macOS may ask again for Keychain access; click "Always Allow".
