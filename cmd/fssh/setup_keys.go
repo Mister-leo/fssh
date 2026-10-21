@@ -153,11 +153,15 @@ func importSSHKeys() error {
 
 		fmt.Printf("  ✓ Imported as '%s' (fingerprint: %s)\n", rec.Alias, rec.Fingerprint)
 		successCount++
+		handleOriginalKeyFile(key.Path, rec.Alias, "")
 	}
 
 	fmt.Println()
 	if successCount > 0 {
 		fmt.Printf("✓ Successfully imported %d/%d selected keys\n", successCount, len(keysToImport))
+		if metas, _ := store.ListMeta(); len(metas) >= 2 {
+			fmt.Println(i18n.T("setup.bind_hint"))
+		}
 	} else {
 		fmt.Println("⚠️  No keys were imported")
 	}

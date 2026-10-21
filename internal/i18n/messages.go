@@ -437,4 +437,326 @@ var messages = map[string]map[Lang]string{
 		EN: "Next steps:\n  1. Import an SSH key: fssh import --alias myserver --file ~/.ssh/id_ed25519\n  2. Start the agent: fssh agent",
 		ZH: "下一步:\n  1. 导入 SSH 私钥: fssh import --alias myserver --file ~/.ssh/id_ed25519\n  2. 启动 agent: fssh agent",
 	},
+
+	// ---- usability (M3) ----
+	"cmd.keygen": {
+		EN: "Generate a new key directly into encrypted storage",
+		ZH: "生成新密钥并直接加密保存（明文不落盘）",
+	},
+	"cmd.pubkey": {
+		EN: "Print a key's public key (--copy to clipboard)",
+		ZH: "输出密钥的公钥（--copy 复制到剪贴板）",
+	},
+	"cmd.bind": {
+		EN: "Make a host use one specific key",
+		ZH: "让某台主机只使用指定的密钥",
+	},
+	"cmd.unbind": {
+		EN: "Remove a host's key binding",
+		ZH: "取消主机与密钥的绑定",
+	},
+	"cmd.doctor": {
+		EN: "Check the setup and suggest fixes",
+		ZH: "检查配置并给出修复建议",
+	},
+	"auth.reason_keygen": {
+		EN: "save new key \"%s\" in fssh",
+		ZH: "将新密钥「%s」保存到 fssh",
+	},
+	"list.empty": {
+		EN: "No keys yet. Import one with `fssh import` or create one with `fssh keygen`.",
+		ZH: "还没有密钥。用 `fssh import` 导入，或用 `fssh keygen` 生成。",
+	},
+	"list.header": {
+		EN: "ALIAS\tTYPE\tFINGERPRINT\tCREATED\tHOSTS",
+		ZH: "别名\t类型\t指纹\t创建时间\t绑定主机",
+	},
+	"pubkey.usage": {
+		EN: "usage: fssh pubkey <alias> [--copy]",
+		ZH: "用法: fssh pubkey <别名> [--copy]",
+	},
+	"pubkey.copied": {
+		EN: "Copied to the clipboard",
+		ZH: "已复制到剪贴板",
+	},
+	"keygen.usage": {
+		EN: "usage: fssh keygen <alias> [--type ed25519|ecdsa|rsa] [--bits 3072]",
+		ZH: "用法: fssh keygen <别名> [--type ed25519|ecdsa|rsa] [--bits 3072]",
+	},
+	"keygen.err_type": {
+		EN: "unsupported key type %q: use ed25519, ecdsa or rsa",
+		ZH: "不支持的密钥类型 %q：可选 ed25519、ecdsa、rsa",
+	},
+	"keygen.err_rsa_bits": {
+		EN: "RSA keys must be at least 2048 bits",
+		ZH: "RSA 密钥至少 2048 位",
+	},
+	"keygen.done": {
+		EN: "Created key %s (fingerprint %s). Public key:",
+		ZH: "已生成密钥 %s（指纹 %s），公钥如下:",
+	},
+	"keygen.next": {
+		EN: "Add the public key to the server's ~/.ssh/authorized_keys (or GitHub/GitLab), then bind it to a host:\n  fssh bind <host> %s",
+		ZH: "把公钥添加到服务器的 ~/.ssh/authorized_keys（或 GitHub/GitLab），再绑定到主机:\n  fssh bind <主机> %s",
+	},
+	"bind.usage": {
+		EN: "usage: fssh bind <host> <alias>   e.g. fssh bind github.com work",
+		ZH: "用法: fssh bind <主机> <别名>   例如 fssh bind github.com work",
+	},
+	"bind.created": {
+		EN: "Added a new `Host %s` entry to ~/.ssh/config",
+		ZH: "已在 ~/.ssh/config 中新建 `Host %s`",
+	},
+	"bind.done": {
+		EN: "%s now uses only key %s (other keys in the agent are not offered)",
+		ZH: "%s 现在只使用密钥 %s（不再尝试 agent 中的其他密钥）",
+	},
+	"bind.err_elsewhere": {
+		EN: "host %s is defined in %s, which fssh does not edit. Add these lines to its Host block:\n    %s",
+		ZH: "主机 %s 定义在 %s 中，fssh 不修改该文件。请在其 Host 块中加入:\n    %s",
+	},
+	"unbind.usage": {
+		EN: "usage: fssh unbind <host>",
+		ZH: "用法: fssh unbind <主机>",
+	},
+	"unbind.done": {
+		EN: "%s is no longer bound to a key",
+		ZH: "%s 已取消密钥绑定",
+	},
+	"unbind.none": {
+		EN: "%s is not bound to an fssh key",
+		ZH: "%s 没有绑定 fssh 密钥",
+	},
+	"unbind.err_elsewhere": {
+		EN: "host %s is defined in %s, which fssh does not edit",
+		ZH: "主机 %s 定义在 %s 中，fssh 不修改该文件",
+	},
+	"remove.bound_hosts": {
+		EN: "These hosts were bound to the removed key and will fail to log in: %s. Rebind them with `fssh bind` or run `fssh unbind <host>`.",
+		ZH: "以下主机绑定了已删除的密钥，将无法登录: %s。请用 `fssh bind` 重新绑定，或运行 `fssh unbind <主机>`。",
+	},
+	"setup.bind_hint": {
+		EN: "Tip: with several keys, bind each host to one key so the right account is used: fssh bind github.com <alias>",
+		ZH: "提示：有多把密钥时，建议把主机绑定到指定密钥，避免用错账号: fssh bind github.com <别名>",
+	},
+	"import.err_original_mode": {
+		EN: "invalid --original %q: use archive, delete or keep",
+		ZH: "--original 取值 %q 无效：可选 archive、delete、keep",
+	},
+	"import.original_prompt": {
+		EN: "The plaintext private key is still at %s, and ssh can keep using it directly, bypassing fssh.\n  1) Archive: move it to ~/.ssh/fssh-archive/ (ssh no longer uses it; still plaintext, delete it once everything works) [default]\n  2) Delete it\n  3) Keep it",
+		ZH: "明文私钥仍在 %s，ssh 仍可能绕过 fssh 直接使用它。\n  1) 归档：移到 ~/.ssh/fssh-archive/（ssh 不再自动使用；仍是明文，确认无误后可删除）[默认]\n  2) 删除\n  3) 保留",
+	},
+	"import.original_choice": {
+		EN: "Choice [1]: ",
+		ZH: "请选择 [1]: ",
+	},
+	"import.original_delete_confirm": {
+		EN: "Delete %s permanently? Make sure you have a backup (y/N): ",
+		ZH: "永久删除 %s？请确认已有备份 (y/N): ",
+	},
+	"import.original_archived": {
+		EN: "Archived to %s",
+		ZH: "已归档到 %s",
+	},
+	"import.original_deleted": {
+		EN: "Deleted %s",
+		ZH: "已删除 %s",
+	},
+	"import.original_kept": {
+		EN: "Kept the plaintext key file; ssh may still use it without fssh",
+		ZH: "已保留明文私钥文件；ssh 仍可能不经过 fssh 直接使用它",
+	},
+	"import.original_failed": {
+		EN: "could not handle the original key file: %v",
+		ZH: "处理原私钥文件失败: %v",
+	},
+	"import.original_hint": {
+		EN: "The plaintext key is still at %s. Archive it with --original archive or delete it once you have a backup.",
+		ZH: "明文私钥仍在 %s。可用 --original archive 归档，或在备份后删除。",
+	},
+	"import.original_referenced": {
+		EN: "~/.ssh/config: host %s uses this file via IdentityFile. Switch it to fssh with: fssh bind %s %s",
+		ZH: "~/.ssh/config 中主机 %s 通过 IdentityFile 使用该文件，建议改为: fssh bind %s %s",
+	},
+	"status.mode": {
+		EN: "Auth mode",
+		ZH: "认证模式",
+	},
+	"status.initialized": {
+		EN: "Initialized",
+		ZH: "已初始化",
+	},
+	"status.keys": {
+		EN: "Keys",
+		ZH: "密钥数量",
+	},
+	"status.agent": {
+		EN: "Agent",
+		ZH: "Agent",
+	},
+	"status.agent_running": {
+		EN: "running, %d key(s) (%s)",
+		ZH: "运行中，%d 把密钥（%s）",
+	},
+	"status.agent_down": {
+		EN: "not running (%s)",
+		ZH: "未运行（%s）",
+	},
+	"status.launchagent": {
+		EN: "Auto-start",
+		ZH: "开机自启",
+	},
+	"status.sshconfig": {
+		EN: "ssh config uses fssh",
+		ZH: "ssh 配置已接入",
+	},
+	"status.authsock": {
+		EN: "SSH_AUTH_SOCK",
+		ZH: "SSH_AUTH_SOCK",
+	},
+	"status.authsock_unset": {
+		EN: "(not set)",
+		ZH: "（未设置）",
+	},
+	"status.authsock_fssh": {
+		EN: "fssh agent",
+		ZH: "fssh agent",
+	},
+	"status.ttl": {
+		EN: "Unlock cache",
+		ZH: "免验证时间",
+	},
+	"status.ttl_value": {
+		EN: "%d seconds",
+		ZH: "%d 秒",
+	},
+	"status.convenience": {
+		EN: "convenience mode (keys decrypted at start)",
+		ZH: "便捷模式（启动时解密全部密钥）",
+	},
+	"status.forwarded": {
+		EN: "Forwarded requests",
+		ZH: "转发签名请求",
+	},
+	"status.recovery": {
+		EN: "Recovery codes left",
+		ZH: "剩余恢复码",
+	},
+	"status.recovery_legacy": {
+		EN: "old format, cannot recover (run fssh otp regen-recovery)",
+		ZH: "旧版格式，无法使用（运行 fssh otp regen-recovery）",
+	},
+	"status.yes": {
+		EN: "yes",
+		ZH: "是",
+	},
+	"status.no": {
+		EN: "no",
+		ZH: "否",
+	},
+	"doctor.config_invalid": {
+		EN: "~/.fssh/config.json is invalid: %v",
+		ZH: "~/.fssh/config.json 格式错误: %v",
+	},
+	"doctor.fix_config": {
+		EN: "fix the JSON syntax or delete the file to use defaults",
+		ZH: "修正 JSON 格式，或删除该文件以使用默认配置",
+	},
+	"doctor.init_error": {
+		EN: "cannot determine initialization state: %v",
+		ZH: "无法确定初始化状态: %v",
+	},
+	"doctor.not_initialized": {
+		EN: "fssh is not initialized",
+		ZH: "fssh 尚未初始化",
+	},
+	"doctor.initialized": {
+		EN: "initialized (%s mode)",
+		ZH: "已初始化（%s 模式）",
+	},
+	"doctor.no_keys": {
+		EN: "no keys imported yet",
+		ZH: "还没有导入任何密钥",
+	},
+	"doctor.agent_ok": {
+		EN: "agent is running and serves %d key(s)",
+		ZH: "agent 正在运行，提供 %d 把密钥",
+	},
+	"doctor.agent_down": {
+		EN: "agent is not reachable at %s",
+		ZH: "无法连接 agent（%s）",
+	},
+	"doctor.no_launchagent": {
+		EN: "agent does not start automatically at login",
+		ZH: "agent 不会在登录时自动启动",
+	},
+	"doctor.fix_launchagent": {
+		EN: "run `fssh init` again and accept the auto-start step",
+		ZH: "重新运行 `fssh init` 并完成开机自启步骤",
+	},
+	"doctor.launchagent_binary_missing": {
+		EN: "auto-start points to %s, which does not exist",
+		ZH: "开机自启指向的 %s 不存在",
+	},
+	"doctor.log_in_tmp": {
+		EN: "agent logs go to /tmp/fssh-agent.log, readable by other users",
+		ZH: "agent 日志写在 /tmp/fssh-agent.log，其他用户可读",
+	},
+	"status.ssh_all": {
+		EN: "yes, all hosts",
+		ZH: "是，所有主机",
+	},
+	"status.ssh_partial": {
+		EN: "only some hosts",
+		ZH: "仅部分主机",
+	},
+	"doctor.ssh_partial": {
+		EN: "only some hosts in ~/.ssh/config use the fssh agent; the others use plaintext keys or another agent",
+		ZH: "~/.ssh/config 中只有部分主机使用 fssh agent，其余主机会使用明文私钥或其他 agent",
+	},
+	"doctor.ssh_ok": {
+		EN: "ssh is configured to use the fssh agent",
+		ZH: "ssh 已配置使用 fssh agent",
+	},
+	"doctor.ssh_env_only": {
+		EN: "only SSH_AUTH_SOCK points to fssh; apps that do not inherit it (IDEs, git GUIs) bypass fssh",
+		ZH: "只有 SSH_AUTH_SOCK 指向 fssh；不继承该变量的程序（IDE、git 图形客户端）会绕过 fssh",
+	},
+	"doctor.ssh_missing": {
+		EN: "ssh is not configured to use the fssh agent",
+		ZH: "ssh 没有配置使用 fssh agent",
+	},
+	"doctor.fix_ssh": {
+		EN: "add to the top of ~/.ssh/config:\n  Host *\n      IdentityAgent %s",
+		ZH: "在 ~/.ssh/config 开头加入:\n  Host *\n      IdentityAgent %s",
+	},
+	"doctor.plaintext_imported": {
+		EN: "%s is a plaintext copy of imported key %s; ssh can still use it and bypass fssh",
+		ZH: "%s 是已导入密钥 %s 的明文副本，ssh 仍可绕过 fssh 直接使用",
+	},
+	"doctor.plaintext_encrypted": {
+		EN: "%s is a passphrase-protected private key not managed by fssh",
+		ZH: "%s 是未由 fssh 管理的私钥（有密码保护）",
+	},
+	"doctor.plaintext_unprotected": {
+		EN: "%s is an unencrypted private key not managed by fssh",
+		ZH: "%s 是未由 fssh 管理的私钥（无密码保护）",
+	},
+	"doctor.unbound": {
+		EN: "%d keys but no host is bound to one: every key is offered to every server (wrong account, \"Too many authentication failures\")",
+		ZH: "有 %d 把密钥，但没有主机绑定指定密钥：每台服务器都会依次尝试所有密钥（可能用错账号或报 Too many authentication failures）",
+	},
+	"doctor.recovery_low": {
+		EN: "only %d OTP recovery code(s) left",
+		ZH: "OTP 恢复码只剩 %d 个",
+	},
+	"doctor.all_ok": {
+		EN: "Everything looks good.",
+		ZH: "一切正常。",
+	},
+	"doctor.summary": {
+		EN: "%d problem(s), %d warning(s)",
+		ZH: "%d 个问题，%d 个警告",
+	},
 }

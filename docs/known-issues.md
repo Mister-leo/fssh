@@ -41,7 +41,7 @@
 
 ## P1：关键流程与体验
 
-- [ ] **P1-1 导入后明文私钥仍留在 `~/.ssh`**
+- [x] **P1-1 导入后明文私钥仍留在 `~/.ssh`**
   - 现象：不提示删除/归档原文件，也不引导 `IdentitiesOnly`；ssh 可能直接读取明文 `id_*` 绕过 fssh
   - 位置：`cmd/fssh/setup_keys.go`
 
@@ -65,12 +65,12 @@
   - 现象：已写入 `IdentityAgent` 仍以 “⚠️ IMPORTANT” 要求设置 `SSH_AUTH_SOCK`；欢迎页列 6 步，实际 Step x/8
   - 位置：`cmd/fssh/setup.go`
 
-- [ ] **P1-7 交互式 Shell 可用性**
+- [x] **P1-7 交互式 Shell 可用性**
   - 不支持 `Include`，拆分配置的用户看到空列表
   - 启动时串行 DNS 解析所有主机，主机多或 VPN 断开时卡顿（`cmd/fssh/shell.go:374`）
   - 数字 ID 依赖列表顺序，增删后变化
 
-- [ ] **P1-8 `fssh status` 信息过少**
+- [x] **P1-8 `fssh status` 信息过少**
   - 现象：不显示认证模式、Agent 是否运行、密钥数量、TTL
   - 位置：`cmd/fssh/main.go`（`cmdStatus`）
 
@@ -95,6 +95,7 @@
   - crypt、TOTP、ssh config 写入等高风险模块无回归保障
 
 - [ ] **P2-4 文档与实现不一致**
+  - 第三阶段新增内容需写入 README：`keygen`、`pubkey`、`bind`/`unbind`、`doctor`、`list --json`、`import --original`、Shell `connect` 透传与 `list -r`
   - 第二阶段新增内容需写入 README：`fssh otp` 子命令、`fssh log`、`forwarded_sign` 配置、`ssh-add -x/-X/-D` 行为、开发用环境变量 `FSSH_KEYCHAIN_SERVICE`
   - CLAUDE.md 称 OTP 用 scrypt，代码为 PBKDF2
   - README FAQ 编号重复（两个“4.”）
@@ -104,7 +105,7 @@
 
 > 在隔离 HOME 中编译运行验证；标注“实测”的为已复现，其余为按代码推演的使用场景。
 
-- [ ] **U-1 多密钥时无法指定“哪台主机用哪把钥匙”**
+- [x] **U-1 多密钥时无法指定“哪台主机用哪把钥匙”**
   - 场景：同时导入 GitHub 个人/公司两把 key，`git push` 用 Agent 中第一把被接受的 key，推到错误账号；密钥 ≥6 把时服务器报 `Too many authentication failures`；所有公钥都会暴露给每一台服务器
   - 原因：Shell `add` 选“Use fssh agent”只写 `IdentityAgent`，不绑定具体 key（`cmd/fssh/shell_commands.go:119-135`）；没有导出 `.pub` 供 `IdentityFile` + `IdentitiesOnly` 使用
 
@@ -120,25 +121,25 @@
   - 现象：`fssh help` / `--help` / `version` 都只输出一行 usage 且退出码 2；无子命令说明、无版本号，用户无法判断自己装的版本
   - 无参数运行直接进入 Shell，新用户不知道这是什么
 
-- [ ] **U-5 Shell 不读 `Include`（实测）**
+- [x] **U-5 Shell 不读 `Include`（实测）**
   - 现象：`Include conf.d/*` 中的主机不出现在 `list` 中
 
-- [ ] **U-6 Shell 显示的 IP 在代理环境下是假的（实测）**
+- [x] **U-6 Shell 显示的 IP 在代理环境下是假的（实测）**
   - 现象：开启 Clash/Surge 等 fake-ip 代理时，不存在的域名被解析成 `198.18.x.x` 并显示为主机 IP，按 IP 搜索/连接也会错配
   - 位置：`cmd/fssh/shell.go:374`（`resolveIPName`）
 
-- [ ] **U-7 Shell 同一 Host 的多个别名显示成多台主机（实测）**
+- [x] **U-7 Shell 同一 Host 的多个别名显示成多台主机（实测）**
   - 现象：`Host web1 web1-alias` 在列表中出现两行
 
-- [ ] **U-8 Shell 连接能力受限**
+- [x] **U-8 Shell 连接能力受限**
   - 只能连 config 里已有的主机，不能 `connect user@1.2.3.4`，不能透传 `-L`/`-J` 等参数；ssh 退出码被忽略，连接失败无提示
   - 位置：`cmd/fssh/shell.go:217-225`
 
-- [ ] **U-9 没有生成密钥、查看公钥的命令**
+- [x] **U-9 没有生成密钥、查看公钥的命令**
   - 新用户必须先用 `ssh-keygen` 生成明文私钥再导入；部署新服务器时无 `fssh pubkey <alias>` 复制公钥，需绕道 `ssh-add -L`
   - `fssh list` 输出为 `alias=... fingerprint=...` 机器格式，不显示密钥类型
 
-- [ ] **U-10 认证失败时用户看不懂**
+- [x] **U-10 认证失败时用户看不懂**
   - 实测（2026-10-21）：Agent 锁定后 `ssh-keygen -Y sign` 立即回退到 `~/.ssh` 中的明文私钥并提示输入其密码
   - 取消指纹或 Agent 未运行时，ssh 只显示 `agent refused operation` / `Permission denied (publickey)`，没有任何指向 fssh 的提示；若 `~/.ssh` 还有明文 key，会静默回退使用它
 
@@ -170,3 +171,24 @@
 
 - [ ] **P1-13 `ssh-add -D` 的提示与实际行为不一致**
   - 显示 “All identities removed”，但 `ssh-add -l` 仍列出密钥（fssh 将其实现为清除解锁缓存，密钥保存在加密存储中）；需在文档中说明
+
+## 第三阶段新发现（2026-10-21）
+
+- [x] **P1-14 Shell `edit` 会丢失用户配置**
+  - 现象：编辑主机时只保留 fssh 认识的十几个选项，`LocalForward`、`SetEnv` 等其他选项、块内注释和 `Host` 行上的别名都被删除
+  - 修复：重写时保留原 `Host` 行和所有未建模的内容（`internal/sshconfig/writer.go` `mergePreserved`）
+
+- [x] **P1-15 解析 ssh 配置时值中的 `=` 被当作分隔符**
+  - 现象：`ProxyCommand ssh -o ControlPath=x ...` 被错误切分
+  - 修复：按 ssh 规则只把键名后的第一个 `=` 作为分隔符（`parseKV`）
+
+- [x] **P1-16 `Match` 块被当作上一个 `Host` 块的一部分**
+  - 现象：`Match` 块里的 `HostName` 覆盖了上一个主机；编辑主机时会连同后面的 `Match` 块一起改写
+  - 修复：解析和定位主机块时把 `Match` 作为块边界
+
+- [x] **P1-17 Shell 中新增的主机无法 Tab 补全**
+  - 修复：补全函数在补全时读取当前状态，而不是启动时的快照
+
+- [ ] **P1-18 每次修改 ssh 配置都会生成一个 `config.bak.<时间戳>`**
+  - `bind`、Shell 编辑等每次写入都备份一次，`~/.ssh` 下备份文件会持续累积；应只保留最近几份
+  - 位置：`internal/sshconfig/writer.go` `backupSSHConfig`

@@ -155,7 +155,14 @@ func NewRecordFromPrivateKeyBytes(alias string, keyFileBytes []byte, passphrase 
     if err != nil {
         return nil, err
     }
+    return NewRecordFromKey(alias, k, comment)
+}
+
+// NewRecordFromKey builds a record from an in-memory private key
+// (ed25519, *rsa.PrivateKey or *ecdsa.PrivateKey).
+func NewRecordFromKey(alias string, k interface{}, comment string) (*Record, error) {
     var der []byte
+    var err error
     switch kk := k.(type) {
     case ed25519.PrivateKey:
         der, err = x509.MarshalPKCS8PrivateKey(kk)
@@ -184,7 +191,14 @@ func SaveEncryptedRecord(rec *Record, masterKey []byte) error {
     if err := ensureDirs(); err != nil {
         return err
     }
-    return saveEncryptedTo(KeysDir(), rec, masterKey)
+    if err := saveEncryptedTo(KeysDir(), rec, masterKey); err != nil {
+        return err
+    }
+    meta, err := LoadMeta(rec.Alias)
+    if err != nil {
+        return err
+    }
+    return writePubKey(meta)
 }
 
 func saveEncryptedTo(dir string, rec *Record, masterKey []byte) error {

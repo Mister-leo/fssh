@@ -44,7 +44,8 @@ func WriteHostConfig(cfg *HostConfig, overwrite bool) error {
 	// 7. Construct updated config
 	var result []string
 	if found {
-		// Replace existing block
+		// Replace existing block, keeping what HostConfig does not model
+		newBlockLines = mergePreserved(lines[start:end], newBlockLines, cfg.Name)
 		result = append(result, lines[:start]...)
 		result = append(result, newBlockLines...)
 		result = append(result, lines[end:]...)
@@ -140,8 +141,8 @@ func LoadAllHostConfigs() (map[string]*HostConfig, error) {
 			start := i
 			end := i + 1
 			for end < len(lines) {
-				nextLine := strings.TrimSpace(lines[end])
-				if strings.HasPrefix(strings.ToLower(nextLine), "host ") {
+				nextLine := strings.ToLower(strings.TrimSpace(lines[end]))
+				if strings.HasPrefix(nextLine, "host ") || strings.HasPrefix(nextLine, "match ") {
 					break
 				}
 				end++
@@ -162,6 +163,55 @@ func LoadAllHostConfigs() (map[string]*HostConfig, error) {
 }
 
 // --- Helper functions ---
+
+// managedKeys are the directives HostConfig models; renderHostBlock writes
+// them, so mergePreserved drops their old lines.
+var managedKeys = map[string]bool{
+	"hostname": true, "user": true, "port": true, "identityagent": true,
+	"identityfile": true, "identitiesonly": true, "proxyjump": true,
+	"proxycommand": true, "forwardagent": true, "serveraliveinterval": true,
+	"serveralivecountmax": true, "addkeystoagent": true, "usekeychain": true,
+	"pubkeyacceptedalgorithms": true, "stricthostkeychecking": true,
+	"userknownhostsfile": true, "compression": true, "tcpkeepalive": true,
+}
+
+// mergePreserved keeps what a rewrite would otherwise lose: the original Host
+// line (with any extra aliases) and every comment, blank line and directive
+// HostConfig does not model (LocalForward, SetEnv, ...), in original order.
+func mergePreserved(oldBlock, newBlock []string, name string) []string {
+	if len(oldBlock) == 0 {
+		return newBlock
+	}
+	out := append([]string(nil), newBlock...)
+	if _, v := parseKV(oldBlock[0]); containsField(v, name) {
+		out[0] = oldBlock[0]
+	}
+	// trailing blank lines stay at the end of the block
+	body := oldBlock[1:]
+	tail := len(body)
+	for tail > 0 && strings.TrimSpace(body[tail-1]) == "" {
+		tail--
+	}
+	for _, line := range body[:tail] {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			if k, _ := parseKV(trimmed); managedKeys[k] {
+				continue
+			}
+		}
+		out = append(out, line)
+	}
+	return append(out, body[tail:]...)
+}
+
+func containsField(s, name string) bool {
+	for _, f := range strings.Fields(s) {
+		if f == name {
+			return true
+		}
+	}
+	return false
+}
 
 func sshConfigPath() string {
 	home, _ := os.UserHomeDir()
@@ -252,6 +302,10 @@ func findHostBlock(lines []string, hostName string) (int, int, bool) {
 		line := strings.TrimSpace(lines[i])
 		lower := strings.ToLower(line)
 
+		if strings.HasPrefix(lower, "match ") && inBlock {
+			// a Match block also ends the current Host block
+			return start, i, true
+		}
 		if strings.HasPrefix(lower, "host ") {
 			hostParts := strings.Fields(line[5:])
 
@@ -319,6 +373,12 @@ func renderHostBlock(cfg *HostConfig) string {
 	for _, idFile := range cfg.IdentityFile {
 		b.WriteString("  IdentityFile ")
 		b.WriteString(idFile)
+		b.WriteString("\n")
+	}
+
+	if cfg.IdentitiesOnly != "" {
+		b.WriteString("  IdentitiesOnly ")
+		b.WriteString(cfg.IdentitiesOnly)
 		b.WriteString("\n")
 	}
 
@@ -432,8 +492,8 @@ func parseHostBlock(lines []string, start, end int) (*HostConfig, error) {
 			continue
 		}
 
-		// Stop at next Host directive
-		if strings.HasPrefix(strings.ToLower(trimmed), "host ") {
+		// Stop at next Host or Match directive
+		if lower := strings.ToLower(trimmed); strings.HasPrefix(lower, "host ") || strings.HasPrefix(lower, "match ") {
 			break
 		}
 
@@ -449,6 +509,8 @@ func parseHostBlock(lines []string, start, end int) (*HostConfig, error) {
 			cfg.IdentityFile = append(cfg.IdentityFile, value)
 		case "identityagent":
 			cfg.IdentityAgent = value
+		case "identitiesonly":
+			cfg.IdentitiesOnly = value
 		case "proxycommand":
 			cfg.ProxyCommand = value
 		case "proxyjump":

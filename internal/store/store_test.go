@@ -2,8 +2,11 @@ package store
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/pem"
 	"errors"
 	"os"
@@ -226,6 +229,64 @@ func TestReencryptAllWithCandidateKeys(t *testing.T) {
 	for _, alias := range []string{"a", "b"} {
 		if _, err := LoadDecryptedRecord(alias, k1); err != nil {
 			t.Fatalf("%s not readable with target key: %v", alias, err)
+		}
+	}
+}
+
+func TestPubKeyFiles(t *testing.T) {
+	setupHome(t)
+	rec := saveTestKey(t, "work", masterKey())
+
+	path, _ := PubKeyPath("work")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("public key file not written: %v", err)
+	}
+	pk, comment, _, _, err := ssh.ParseAuthorizedKey(b)
+	if err != nil || comment != "work" || ssh.FingerprintSHA256(pk) != rec.Fingerprint {
+		t.Fatalf("bad public key file %q: %v", b, err)
+	}
+
+	// SyncPubKeys restores missing files and removes orphans
+	os.Remove(path)
+	orphan := filepath.Join(PubKeysDir(), "gone.pub")
+	os.WriteFile(orphan, []byte("x"), 0644)
+	if err := SyncPubKeys(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("missing public key not restored")
+	}
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Fatal("orphan public key not removed")
+	}
+
+	if err := RemoveRecord("work"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("public key left after RemoveRecord")
+	}
+	if err := RemoveRecord("work"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("second remove: %v", err)
+	}
+}
+
+func TestKeyDescription(t *testing.T) {
+	_, edPriv, _ := ed25519.GenerateKey(rand.Reader)
+	rsaPriv, _ := rsa.GenerateKey(rand.Reader, 2048)
+	ecPriv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	cases := []struct {
+		priv interface{}
+		want string
+	}{{edPriv, "ED25519"}, {rsaPriv, "RSA-2048"}, {ecPriv, "ECDSA-P256"}}
+	for _, c := range cases {
+		s, err := ssh.NewSignerFromKey(c.priv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := KeyDescription(s.PublicKey()); got != c.want {
+			t.Errorf("KeyDescription = %q, want %q", got, c.want)
 		}
 	}
 }

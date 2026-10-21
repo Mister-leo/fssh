@@ -19,6 +19,9 @@ type HostConfig struct {
 	Port          string   // SSH port (default 22)
 	IdentityFile  []string // Direct identity files
 	IdentityAgent string   // SSH agent socket path
+	// IdentitiesOnly "yes" restricts ssh to the IdentityFile keys, so a host
+	// bound to one fssh key is not offered every key in the agent.
+	IdentitiesOnly string
 
 	// Proxy configuration (mutually exclusive)
 	ProxyCommand string // Full proxy command

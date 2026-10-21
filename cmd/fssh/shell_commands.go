@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"fssh/internal/sshconfig"
 	"fssh/internal/store"
@@ -51,6 +53,8 @@ type ShellContext struct {
 	ids          []string
 	liner        *liner.State
 	importedKeys []string
+	idOf         map[string]string // host name -> list id
+	boundKey     map[string]string // host name -> fssh key alias
 }
 
 // cmdAdd adds a new SSH host configuration
@@ -118,21 +122,7 @@ func cmdAdd(ctx *ShellContext) error {
 
 	switch choice {
 	case "1":
-		// List imported keys
-		if len(ctx.importedKeys) == 0 {
-			fmt.Println("Warning: No keys imported yet. Run 'fssh import' first.")
-			fmt.Println("Using fssh agent socket anyway (you can import keys later)")
-		} else {
-			fmt.Println("\nImported keys:")
-			for _, key := range ctx.importedKeys {
-				fmt.Printf("  - %s\n", key)
-			}
-			fmt.Println("\nNote: All imported keys are available via the agent")
-		}
-
-		// Always set IdentityAgent for fssh usage
-		home, _ := os.UserHomeDir()
-		cfg.IdentityAgent = filepath.Join(home, ".fssh", "agent.sock")
+		applyAgentIdentity(cfg, chooseKey(ctx))
 
 	case "2":
 		line, _ := ctx.liner.Prompt("IdentityFile path: ")
@@ -243,9 +233,9 @@ func cmdEdit(ctx *ShellContext, args string) error {
 	}
 
 	// Load existing configuration
-	cfg, err := sshconfig.LoadHostConfig(hostName)
+	cfg, err := loadEditableHost(ctx, hostName)
 	if err != nil {
-		return fmt.Errorf("host not found: %w", err)
+		return err
 	}
 
 	fmt.Printf("\n=== Edit Host: %s ===\n", cfg.Name)
@@ -299,16 +289,16 @@ func cmdEdit(ctx *ShellContext, args string) error {
 
 		switch strings.TrimSpace(choice) {
 		case "1":
-			home, _ := os.UserHomeDir()
-			cfg.IdentityAgent = filepath.Join(home, ".fssh", "agent.sock")
-			cfg.IdentityFile = nil
+			applyAgentIdentity(cfg, chooseKey(ctx))
 		case "2":
 			idFile, _ := ctx.liner.Prompt("IdentityFile path: ")
 			cfg.IdentityFile = []string{strings.TrimSpace(idFile)}
 			cfg.IdentityAgent = ""
+			cfg.IdentitiesOnly = ""
 		case "3":
 			cfg.IdentityAgent = ""
 			cfg.IdentityFile = nil
+			cfg.IdentitiesOnly = ""
 		}
 	}
 
@@ -385,9 +375,9 @@ func cmdDelete(ctx *ShellContext, args string) error {
 	}
 
 	// Check if host exists
-	cfg, err := sshconfig.LoadHostConfig(hostName)
+	cfg, err := loadEditableHost(ctx, hostName)
 	if err != nil {
-		return fmt.Errorf("host not found: %w", err)
+		return err
 	}
 
 	// Show details and confirm
@@ -423,49 +413,7 @@ func cmdShow(ctx *ShellContext, args string) error {
 		fmt.Println("Usage: show <host>")
 		return nil
 	}
-
-	// Load configuration
-	cfg, err := sshconfig.LoadHostConfig(hostName)
-	if err != nil {
-		return fmt.Errorf("host not found: %w", err)
-	}
-
-	// Display configuration
-	fmt.Printf("\n=== Host: %s ===\n", cfg.Name)
-	fmt.Printf("Hostname: %s\n", cfg.Hostname)
-
-	if cfg.User != "" {
-		fmt.Printf("User: %s\n", cfg.User)
-	}
-	if cfg.Port != "" {
-		fmt.Printf("Port: %s\n", cfg.Port)
-	} else {
-		fmt.Printf("Port: 22 (default)\n")
-	}
-
-	if cfg.IdentityAgent != "" {
-		fmt.Printf("IdentityAgent: %s\n", cfg.IdentityAgent)
-	}
-	for _, idFile := range cfg.IdentityFile {
-		fmt.Printf("IdentityFile: %s\n", idFile)
-	}
-
-	if cfg.ProxyJump != "" {
-		fmt.Printf("ProxyJump: %s\n", cfg.ProxyJump)
-	}
-	if cfg.ProxyCommand != "" {
-		fmt.Printf("ProxyCommand: %s\n", cfg.ProxyCommand)
-	}
-
-	if cfg.ForwardAgent != "" {
-		fmt.Printf("ForwardAgent: %s\n", cfg.ForwardAgent)
-	}
-	if cfg.ServerAliveInterval != "" {
-		fmt.Printf("ServerAliveInterval: %s\n", cfg.ServerAliveInterval)
-	}
-
-	fmt.Println()
-	return nil
+	return printHostDetails(ctx, hostName, false)
 }
 
 // cmdInfo displays detailed host configuration by ID, alias, hostname, or IP
@@ -475,27 +423,49 @@ func cmdInfo(ctx *ShellContext, args string) error {
 		fmt.Println("Usage: info <id|alias|hostname|ip>")
 		return nil
 	}
-
-	// Resolve query to host alias
 	hostName := resolveHostQuery(ctx, query)
 	if hostName == "" {
 		return fmt.Errorf("host not found: %s", query)
 	}
+	return printHostDetails(ctx, hostName, true)
+}
 
-	// Load configuration
+func printHostDetails(ctx *ShellContext, hostName string, resolve bool) error {
+	hi, known := ctx.byName[hostName]
 	cfg, err := sshconfig.LoadHostConfig(hostName)
 	if err != nil {
-		return fmt.Errorf("failed to load host config: %w", err)
+		if !known {
+			return fmt.Errorf("host not found: %s", hostName)
+		}
+		// defined in an Include'd file: only what LoadHostInfos knows
+		cfg = &sshconfig.HostConfig{Name: hi.Name, Hostname: hi.Hostname}
 	}
 
-	// Display configuration
 	fmt.Printf("\n=== Host: %s ===\n", cfg.Name)
-	fmt.Printf("Hostname: %s\n", cfg.Hostname)
-
-	// Resolve IP if possible
-	ip := resolveIPName(cfg.Hostname)
-	if ip != "" {
-		fmt.Printf("IP: %s\n", ip)
+	if known && len(hi.Aliases) > 0 {
+		fmt.Printf("Aliases: %s\n", strings.Join(hi.Aliases, ", "))
+	}
+	if cfg.Hostname != "" {
+		fmt.Printf("Hostname: %s\n", cfg.Hostname)
+	} else {
+		fmt.Printf("Hostname: %s (no HostName, ssh connects to the host name itself)\n", cfg.Name)
+	}
+	if resolve {
+		target := cfg.Hostname
+		if target == "" {
+			target = cfg.Name
+		}
+		if ip, fake := lookupIP(target, time.Second); ip != "" {
+			fmt.Printf("IP: %s\n", ip)
+		} else if fake {
+			fmt.Println("IP: (hidden: proxy fake-ip address)")
+		}
+	}
+	if known && hi.Source != "" {
+		home, _ := os.UserHomeDir()
+		if hi.Source != filepath.Join(home, ".ssh", "config") {
+			fmt.Printf("Defined in: %s (read-only in fssh)\n", tildify(hi.Source))
+		}
 	}
 
 	if cfg.User != "" {
@@ -507,6 +477,9 @@ func cmdInfo(ctx *ShellContext, args string) error {
 		fmt.Printf("Port: 22 (default)\n")
 	}
 
+	if key := ctx.boundKey[cfg.Name]; key != "" {
+		fmt.Printf("fssh key: %s (IdentitiesOnly %s)\n", key, cfg.IdentitiesOnly)
+	}
 	if cfg.IdentityAgent != "" {
 		fmt.Printf("IdentityAgent: %s\n", cfg.IdentityAgent)
 	}
@@ -583,56 +556,117 @@ func listImportedKeys() ([]string, error) {
 	return keys, nil
 }
 
-// reloadHosts reloads host information into the context
+// reloadHosts (re)builds every lookup table from ~/.ssh/config. It does no
+// DNS lookups: those made startup slow and showed proxy fake-ip addresses.
 func reloadHosts(ctx *ShellContext) error {
-	// Reload host infos
 	infos, err := sshconfig.LoadHostInfos()
 	if err != nil {
 		return err
 	}
 
-	// Rebuild all mappings
 	ctx.infos = infos
-	ctx.hosts = make([]string, 0, len(infos))
+	ctx.hosts = nil
+	ctx.hostnames = nil
+	ctx.ips = nil
+	ctx.ids = nil
 	ctx.byName = make(map[string]sshconfig.HostInfo)
 	ctx.byHostname = make(map[string]sshconfig.HostInfo)
 	ctx.ipToName = make(map[string]string)
 	ctx.idToName = make(map[string]string)
-	ctx.hostnames = []string{}
-	ctx.ips = []string{}
-	ctx.ids = []string{}
-
-	for _, hi := range infos {
-		ctx.hosts = append(ctx.hosts, hi.Name)
-		ctx.byName[hi.Name] = hi
-	}
-
-	for _, hi := range infos {
-		hn := displayHostname(hi)
-		if hn != "" {
-			ctx.byHostname[hn] = hi
-			ctx.hostnames = append(ctx.hostnames, hn)
-		}
-	}
+	ctx.idOf = make(map[string]string)
 
 	for i, hi := range infos {
 		id := fmt.Sprintf("%d", i+1)
 		ctx.idToName[id] = hi.Name
+		ctx.idOf[hi.Name] = id
 		ctx.ids = append(ctx.ids, id)
-	}
-
-	for _, hi := range infos {
-		hn := displayHostname(hi)
-		ip := resolveIPName(hn)
-		if ip != "" {
-			ctx.ips = append(ctx.ips, ip)
-			if _, ok := ctx.ipToName[ip]; !ok {
-				ctx.ipToName[ip] = hi.Name
+		for _, n := range hi.Names() {
+			ctx.hosts = append(ctx.hosts, n)
+			ctx.byName[n] = hi
+		}
+		if hn := displayHostname(hi); hn != "" {
+			if _, dup := ctx.byHostname[hn]; !dup {
+				ctx.byHostname[hn] = hi
+				ctx.hostnames = append(ctx.hostnames, hn)
+			}
+		}
+		// only literal IPs: resolving names is slow and unreliable behind proxies
+		if net.ParseIP(hi.Hostname) != nil {
+			if _, dup := ctx.ipToName[hi.Hostname]; !dup {
+				ctx.ipToName[hi.Hostname] = hi.Name
+				ctx.ips = append(ctx.ips, hi.Hostname)
 			}
 		}
 	}
 
+	ctx.boundKey = make(map[string]string)
+	if cfgs, err := sshconfig.LoadAllHostConfigs(); err == nil {
+		for name, cfg := range cfgs {
+			if alias := sshconfig.BoundKey(cfg, store.PubKeysDir()); alias != "" {
+				ctx.boundKey[name] = alias
+			}
+		}
+	}
+	ctx.importedKeys, _ = listImportedKeys()
 	return nil
+}
+
+// loadEditableHost loads a host block from ~/.ssh/config, explaining when the
+// host lives in an Include'd file that fssh does not edit.
+func loadEditableHost(ctx *ShellContext, hostName string) (*sshconfig.HostConfig, error) {
+	cfg, err := sshconfig.LoadHostConfig(hostName)
+	if err == nil {
+		return cfg, nil
+	}
+	if hi, ok := ctx.byName[hostName]; ok && hi.Source != "" {
+		home, _ := os.UserHomeDir()
+		if hi.Source != filepath.Join(home, ".ssh", "config") {
+			return nil, fmt.Errorf("host %s is defined in %s; edit that file directly", hostName, tildify(hi.Source))
+		}
+	}
+	return nil, fmt.Errorf("host not found: %w", err)
+}
+
+// chooseKey asks which imported key a host should use. Empty input means no
+// binding: the host is offered every key in the agent.
+func chooseKey(ctx *ShellContext) string {
+	if len(ctx.importedKeys) == 0 {
+		fmt.Println("Warning: No keys imported yet. Run 'fssh import' or 'fssh keygen' first.")
+		return ""
+	}
+	fmt.Println("\nImported keys:")
+	for i, key := range ctx.importedKeys {
+		fmt.Printf("  %d) %s\n", i+1, key)
+	}
+	for {
+		line, _ := ctx.liner.Prompt("Key for this host (number or alias, Enter = any key in the agent): ")
+		choice := strings.TrimSpace(line)
+		if choice == "" {
+			return ""
+		}
+		for i, key := range ctx.importedKeys {
+			if choice == key || choice == fmt.Sprintf("%d", i+1) {
+				return key
+			}
+		}
+		fmt.Println("Unknown key, try again.")
+	}
+}
+
+// applyAgentIdentity points cfg at the fssh agent and, when alias is set,
+// restricts it to that key (IdentityFile <alias>.pub + IdentitiesOnly).
+func applyAgentIdentity(cfg *sshconfig.HostConfig, alias string) {
+	cfg.IdentityAgent = tildify(agentSocket())
+	cfg.IdentityFile = nil
+	cfg.IdentitiesOnly = ""
+	if alias == "" {
+		return
+	}
+	_ = store.SyncPubKeys()
+	if pub, err := store.PubKeyPath(alias); err == nil {
+		cfg.IdentityFile = []string{tildify(pub)}
+		cfg.IdentitiesOnly = "yes"
+	}
 }
 
 // cmdGlobalShow displays the current Host * configuration

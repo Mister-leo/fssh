@@ -2,7 +2,6 @@ package main
 
 import (
     "bufio"
-    "encoding/json"
     "errors"
     "flag"
     "fmt"
@@ -11,6 +10,7 @@ import (
     "path/filepath"
     "strings"
 
+    "fssh/internal/sshconfig"
     "fssh/internal/store"
     "fssh/internal/auth"
     "fssh/internal/config"
@@ -23,8 +23,8 @@ import (
 
 // commandNames lists commands in the order shown by `fssh help`.
 var commandNames = []string{
-    "init", "import", "list", "export", "remove", "rekey", "status",
-    "agent", "log", "otp", "shell", "config-gen", "sshd-align", "version", "help",
+    "init", "import", "keygen", "list", "pubkey", "bind", "unbind", "export", "remove", "rekey",
+    "status", "doctor", "agent", "log", "otp", "shell", "config-gen", "sshd-align", "version", "help",
 }
 
 func main() {
@@ -63,6 +63,16 @@ func main() {
         cmdRekey()
     case "shell":
         runShell()
+    case "keygen":
+        cmdKeygen()
+    case "pubkey":
+        cmdPubkey()
+    case "bind":
+        cmdBind()
+    case "unbind":
+        cmdUnbind()
+    case "doctor":
+        cmdDoctor()
     case "otp":
         cmdOTP()
     case "log":
@@ -112,8 +122,14 @@ func cmdHelp(args []string) {
     }
     fmt.Printf("fssh %s - %s\n\n", name, i18n.T("cmd."+name))
     switch name {
-    case "list", "status", "shell", "version", "help":
+    case "status", "doctor", "shell", "version", "help":
         return // no flags
+    case "bind":
+        fmt.Println(i18n.T("bind.usage"))
+        return
+    case "unbind":
+        fmt.Println(i18n.T("unbind.usage"))
+        return
     case "otp":
         printOTPHelp()
         return
@@ -191,7 +207,13 @@ func cmdImport() {
     passStdin := fs.Bool("passphrase-stdin", false, "read passphrase from stdin")
     comment := fs.String("comment", "", "optional comment")
     force := fs.Bool("force", false, "overwrite an existing alias / allow importing an already imported key")
+    original := fs.String("original", "", "what to do with the plaintext key file after import: archive, delete or keep (default: ask)")
     fs.Parse(os.Args[2:])
+    switch *original {
+    case "", originalKeep, originalArchive, originalDelete:
+    default:
+        fatal(errors.New(i18n.T("import.err_original_mode", *original)))
+    }
 
     if *alias == "" || *file == "" {
         fatal(errors.New(i18n.T("import.err_args_required")))
@@ -240,33 +262,9 @@ func cmdImport() {
         fatal(err)
     }
     fmt.Println(i18n.T("import.done", rec.Alias, rec.Fingerprint))
-}
 
-func cmdList() {
-    dir := store.KeysDir()
-    entries, err := os.ReadDir(dir)
-    if err != nil && !os.IsNotExist(err) {
-        fatal(err)
-    }
-    if len(entries) == 0 {
-        fmt.Println("no keys imported")
-        return
-    }
-    for _, e := range entries {
-        if e.IsDir() || !strings.HasSuffix(e.Name(), ".enc") {
-            continue
-        }
-        p := filepath.Join(dir, e.Name())
-        data, err := os.ReadFile(p)
-        if err != nil {
-            fatal(err)
-        }
-        var m store.EncryptedFile
-        if err := json.Unmarshal(data, &m); err != nil {
-            fatal(err)
-        }
-        fmt.Printf("alias=%s fingerprint=%s created=%s\n", m.Alias, m.Fingerprint, m.CreatedAt)
-    }
+    // 7. 明文私钥仍在磁盘上，ssh 也可能绕过 fssh 直接使用它
+    handleOriginalKeyFile(*file, rec.Alias, *original)
 }
 
 func cmdExport() {
@@ -308,28 +306,6 @@ func cmdExport() {
     fmt.Printf("exported %s to %s (PKCS#8 PEM)%s\n", rec.Alias, *out, func() string { if p != "" { return " with passphrase" } ; return "" }())
 }
 
-func cmdStatus() {
-    initialized, mode, err := auth.IsInitialized()
-    if err != nil {
-        fatal(err)
-    }
-    fmt.Printf("auth_mode=%s initialized=%v\n", mode, initialized)
-    metas, err := store.ListMeta()
-    if err != nil {
-        fatal(err)
-    }
-    fmt.Printf("keys=%d store_dir=%s\n", len(metas), store.KeysDir())
-    if mode == auth.ModeOTP && initialized {
-        if cfg, err := otp.LoadConfig(otp.ConfigPath()); err == nil {
-            if cfg.LegacyRecovery() {
-                fmt.Println(i18n.T("otp.legacy_recovery"))
-            } else {
-                fmt.Printf("recovery_codes_left=%d\n", len(cfg.RecoveryWrapped))
-            }
-        }
-    }
-}
-
 func cmdAgent() {
     cfg, err := config.Load()
     if err != nil {
@@ -365,10 +341,11 @@ func cmdRemove() {
     }
 
     unlockMasterKey(i18n.T("auth.reason_remove", *alias))
-    path, err := store.RecordPath(*alias)
-    if err != nil { fatal(aliasError(*alias, err)) }
-    if err := os.Remove(path); err != nil { fatal(err) }
+    if err := store.RemoveRecord(*alias); err != nil { fatal(aliasError(*alias, err)) }
     fmt.Println(i18n.T("remove.done", *alias))
+    if hosts, err := sshconfig.HostsBoundTo(*alias, store.PubKeysDir()); err == nil && len(hosts) > 0 {
+        fmt.Println(i18n.T("remove.bound_hosts", strings.Join(hosts, ", ")))
+    }
 }
 
 func cmdRekey() {

@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"text/tabwriter"
+	"strings"
 	"time"
 
 	"fssh/internal/audit"
@@ -26,8 +26,7 @@ func cmdLog() {
 		return
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, i18n.T("log.header"))
+	rows := [][]string{strings.Split(i18n.T("log.header"), "\t")}
 	for _, e := range entries {
 		ts := e.Time
 		if t, err := time.Parse(time.RFC3339, e.Time); err == nil {
@@ -48,7 +47,7 @@ func cmdLog() {
 		if e.Error != "" && e.Result != audit.ResultOK {
 			result += " (" + e.Error + ")"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", ts, alias, e.Process, host, result)
+		rows = append(rows, []string{ts, alias, e.Process, host, result})
 	}
-	w.Flush()
+	printTable(os.Stdout, rows)
 }
