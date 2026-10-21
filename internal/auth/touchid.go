@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/rand"
+	"io"
 	"sync"
 	"time"
 
@@ -19,7 +21,8 @@ type TouchIDProvider struct {
 	expiry    time.Time
 
 	// 测试时可替换
-	unlock func() ([]byte, error)
+	unlock func(reason string) ([]byte, error)
+	store  func(key []byte) error
 	now    func() time.Time
 }
 
@@ -32,17 +35,18 @@ func NewTouchIDProvider(ttlSeconds int) *TouchIDProvider {
 	return &TouchIDProvider{
 		ttl:    time.Duration(ttlSeconds) * time.Second,
 		unlock: keychain.LoadMasterKey,
+		store:  func(key []byte) error { return keychain.StoreMasterKey(key, true) },
 		now:    time.Now,
 	}
 }
 
 // UnlockMasterKey 实现 AuthProvider 接口
 // 缓存有效时直接返回，否则通过 Touch ID 从 Keychain 加载 master key
-func (p *TouchIDProvider) UnlockMasterKey() ([]byte, error) {
+func (p *TouchIDProvider) UnlockMasterKey(req Request) ([]byte, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.ttl > 0 && p.cachedKey != nil && p.now().Before(p.expiry) {
+	if !req.NoCache && p.ttl > 0 && p.cachedKey != nil && p.now().Before(p.expiry) {
 		log.Debug("Master key 缓存命中", map[string]interface{}{
 			"expires_at": p.expiry.UTC().Format(time.RFC3339),
 		})
@@ -50,12 +54,12 @@ func (p *TouchIDProvider) UnlockMasterKey() ([]byte, error) {
 		return append([]byte(nil), p.cachedKey...), nil
 	}
 
-	mk, err := p.unlock()
+	mk, err := p.unlock(req.reason())
 	if err != nil {
 		return nil, err
 	}
 
-	if p.ttl > 0 {
+	if !req.NoCache && p.ttl > 0 {
 		p.cachedKey = append([]byte(nil), mk...)
 		p.expiry = p.now().Add(p.ttl)
 		log.Info("Master key 已缓存", map[string]interface{}{
@@ -64,6 +68,31 @@ func (p *TouchIDProvider) UnlockMasterKey() ([]byte, error) {
 		})
 	}
 	return mk, nil
+}
+
+// PrepareRekey 实现 AuthProvider 接口
+// 新 master key 为随机 32 字节，提交时写入 Keychain 并清空缓存
+func (p *TouchIDProvider) PrepareRekey(req Request) (*Rekey, error) {
+	req.NoCache = true
+	old, err := p.UnlockMasterKey(req)
+	if err != nil {
+		return nil, err
+	}
+	newKey := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, newKey); err != nil {
+		return nil, err
+	}
+	return &Rekey{
+		OldKey: old,
+		NewKey: newKey,
+		Commit: func() error {
+			if err := p.store(newKey); err != nil {
+				return err
+			}
+			p.ClearCache()
+			return nil
+		},
+	}, nil
 }
 
 // IsAvailable 实现 AuthProvider 接口

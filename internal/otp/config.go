@@ -29,8 +29,10 @@ type Config struct {
 	// 缓存配置
 	SeedUnlockTTLSeconds int `json:"seed_unlock_ttl_seconds"` // OTP seed 缓存时间（秒）
 
-	// 恢复码（SHA-256 哈希）
-	RecoveryCodesHash []string `json:"recovery_codes_hash"`
+	// 恢复码：SHA-256 哈希用于定位，RecoveryWrapped[i] 是用第 i 个恢复码加密的 seed 副本
+	// 旧版本只有哈希，无法用于恢复（见 LegacyRecovery）
+	RecoveryCodesHash []string      `json:"recovery_codes_hash"`
+	RecoveryWrapped   []WrappedSeed `json:"recovery_wrapped,omitempty"`
 
 	// 创建时间
 	CreatedAt string `json:"created_at"`

@@ -18,7 +18,15 @@ type Config struct {
     LogFormat            string `json:"log_format"`
     LogTimeFormat        string `json:"log_time_format"`
     Language             string `json:"language"` // "zh" or "en", empty = follow system
+    // ForwardedSign controls signature requests arriving through agent
+    // forwarding (ssh -A): "prompt" asks every time, "deny" refuses them.
+    ForwardedSign        string `json:"forwarded_sign"`
 }
+
+const (
+    ForwardedSignPrompt = "prompt"
+    ForwardedSignDeny   = "deny"
+)
 
 func defaultSocket() string {
     home, _ := os.UserHomeDir()
@@ -71,6 +79,7 @@ func (c *Config) ApplyDefaults() {
     if c.LogLevel == "" { c.LogLevel = "info" }
     if c.LogFormat == "" { c.LogFormat = "plain" }
     if c.LogTimeFormat == "" { c.LogTimeFormat = "2006-01-02T15:04:05Z07:00" }
+    if c.ForwardedSign != ForwardedSignDeny { c.ForwardedSign = ForwardedSignPrompt }
 }
 
 func SetupLogging(c *Config) {

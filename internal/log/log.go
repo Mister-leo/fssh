@@ -50,3 +50,6 @@ func out(l, msg string, fields map[string]interface{}) {
     }
     fmt.Fprintln(os.Stderr)
 }
+
+// SetLevel changes the minimum level printed.
+func SetLevel(l string) { level = l }

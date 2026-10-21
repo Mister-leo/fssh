@@ -7,7 +7,7 @@ import (
 	"runtime"
 
 	"fssh/internal/config"
-	"fssh/internal/keychain"
+	"fssh/internal/auth"
 	"fssh/internal/otp"
 )
 
@@ -103,7 +103,7 @@ func printWelcome() {
 
 // checkInitialization checks if fssh is already initialized
 func checkInitialization(force bool) error {
-	exists, err := keychain.MasterKeyExists()
+	exists, _, err := auth.IsInitialized()
 	if err != nil {
 		return fmt.Errorf("failed to check initialization status: %w", err)
 	}

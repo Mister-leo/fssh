@@ -7,6 +7,7 @@ package macos
 #cgo LDFLAGS: -framework LocalAuthentication -framework Foundation
 #include <LocalAuthentication/LocalAuthentication.h>
 #include <CoreFoundation/CoreFoundation.h>
+#include <stdlib.h>
 
 static int touchid_prompt(const char* creason) {
     LAContext *context = [[LAContext alloc] init];
@@ -40,10 +41,13 @@ import "C"
 
 import (
     "errors"
+    "unsafe"
 )
 
 func RequireBiometry(reason string) error {
-    r := C.touchid_prompt(C.CString(reason))
+    cs := C.CString(reason)
+    defer C.free(unsafe.Pointer(cs))
+    r := C.touchid_prompt(cs)
     if r == 1 { return nil }
     if r == -1 { return errors.New("biometry/user presence not available") }
     return errors.New("biometry/user presence failed")

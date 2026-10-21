@@ -123,3 +123,9 @@ func firstAppleLanguage(out string) string {
 	}
 	return fields[0]
 }
+
+// Has reports whether key has a translation.
+func Has(key string) bool {
+	_, ok := messages[key]
+	return ok
+}

@@ -2,7 +2,6 @@ package main
 
 import (
     "bufio"
-    "crypto/rand"
     "encoding/json"
     "errors"
     "flag"
@@ -13,7 +12,7 @@ import (
     "strings"
 
     "fssh/internal/store"
-    "fssh/internal/keychain"
+    "fssh/internal/auth"
     "fssh/internal/config"
     "fssh/internal/i18n"
     "fssh/internal/log"
@@ -25,7 +24,7 @@ import (
 // commandNames lists commands in the order shown by `fssh help`.
 var commandNames = []string{
     "init", "import", "list", "export", "remove", "rekey", "status",
-    "agent", "shell", "config-gen", "sshd-align", "version", "help",
+    "agent", "log", "otp", "shell", "config-gen", "sshd-align", "version", "help",
 }
 
 func main() {
@@ -37,6 +36,10 @@ func main() {
         return
     }
     cmd := os.Args[1]
+    if cmd != "agent" {
+        // info logs are for the long-running agent; interactive commands only show problems
+        log.SetLevel("warn")
+    }
     switch cmd {
     case "help", "-h", "--help":
         cmdHelp(os.Args[2:])
@@ -60,6 +63,10 @@ func main() {
         cmdRekey()
     case "shell":
         runShell()
+    case "otp":
+        cmdOTP()
+    case "log":
+        cmdLog()
     case "sshd-align":
         cmdAlignSSHD()
     case "config-gen":
@@ -107,6 +114,9 @@ func cmdHelp(args []string) {
     switch name {
     case "list", "status", "shell", "version", "help":
         return // no flags
+    case "otp":
+        printOTPHelp()
+        return
     }
     // Re-dispatch with -h: each command's FlagSet prints its flags and exits 0.
     os.Args = []string{os.Args[0], name, "-h"}
@@ -222,11 +232,8 @@ func cmdImport() {
         fatal(errors.New(i18n.T("import.err_already_imported", existing, rec.Fingerprint)))
     }
 
-    // 5. 私钥验证成功后，再要求 Touch ID 获取 master key
-    mk, err := keychain.LoadMasterKey()
-    if err != nil {
-        fatal(err)
-    }
+    // 5. 私钥验证成功后，再认证获取 master key（Touch ID 或 OTP）
+    mk := unlockMasterKey(i18n.T("auth.reason_import", *alias))
 
     // 6. 用 master key 加密并保存私钥
     if err := store.SaveEncryptedRecord(rec, mk); err != nil {
@@ -280,10 +287,11 @@ func cmdExport() {
             fatal(fmt.Errorf("output exists: %s", *out))
         }
     }
-    mk, err := keychain.LoadMasterKey()
-    if err != nil {
-        fatal(err)
+    // 先确认密钥存在，再认证
+    if _, err := store.LoadMeta(*alias); err != nil {
+        fatal(aliasError(*alias, err))
     }
+    mk := unlockMasterKey(i18n.T("auth.reason_export", *alias))
     rec, err := store.LoadDecryptedRecord(*alias, mk)
     if err != nil {
         fatal(err)
@@ -301,14 +309,25 @@ func cmdExport() {
 }
 
 func cmdStatus() {
-    exists, err := keychain.MasterKeyExists()
+    initialized, mode, err := auth.IsInitialized()
     if err != nil {
         fatal(err)
     }
-    fmt.Printf("master_key=%v\n", exists)
-    dir := store.KeysDir()
-    _, err = os.Stat(dir)
-    fmt.Printf("store_dir=%s exists=%v\n", dir, err == nil)
+    fmt.Printf("auth_mode=%s initialized=%v\n", mode, initialized)
+    metas, err := store.ListMeta()
+    if err != nil {
+        fatal(err)
+    }
+    fmt.Printf("keys=%d store_dir=%s\n", len(metas), store.KeysDir())
+    if mode == auth.ModeOTP && initialized {
+        if cfg, err := otp.LoadConfig(otp.ConfigPath()); err == nil {
+            if cfg.LegacyRecovery() {
+                fmt.Println(i18n.T("otp.legacy_recovery"))
+            } else {
+                fmt.Printf("recovery_codes_left=%d\n", len(cfg.RecoveryWrapped))
+            }
+        }
+    }
 }
 
 func cmdAgent() {
@@ -322,7 +341,7 @@ func cmdAgent() {
     ttl := fs.Int("unlock-ttl-seconds", cfg.UnlockTTLSeconds, "unlock cache TTL in seconds, 0 = authenticate on every signature (secure mode)")
     fs.Parse(os.Args[2:])
     log.Init(cfg)
-    if err := agentserver.StartWithOptions(*sock, *require, *ttl); err != nil {
+    if err := agentserver.StartWithOptions(*sock, *require, *ttl, cfg.ForwardedSign); err != nil {
         fatal(err)
     }
 }
@@ -345,7 +364,7 @@ func cmdRemove() {
         }
     }
 
-    if _, err := keychain.LoadMasterKey(); err != nil { fatal(err) }
+    unlockMasterKey(i18n.T("auth.reason_remove", *alias))
     path, err := store.RecordPath(*alias)
     if err != nil { fatal(aliasError(*alias, err)) }
     if err := os.Remove(path); err != nil { fatal(err) }
@@ -355,22 +374,20 @@ func cmdRemove() {
 func cmdRekey() {
     fs := flag.NewFlagSet("rekey", flag.ExitOnError)
     fs.Parse(os.Args[2:])
-    old, err := keychain.LoadMasterKey()
+
+    p, err := auth.GetAuthProvider(0)
     if err != nil { fatal(err) }
-    newk := make([]byte, 32)
-    if _, err := io.ReadFull(rand.Reader, newk); err != nil { fatal(err) }
-    dir := store.KeysDir()
-    entries, err := os.ReadDir(dir)
-    if err != nil && !os.IsNotExist(err) { fatal(err) }
-    for _, e := range entries {
-        if e.IsDir() || !strings.HasSuffix(e.Name(), ".enc") { continue }
-        alias := strings.TrimSuffix(e.Name(), ".enc")
-        rec, err := store.LoadDecryptedRecord(alias, old)
-        if err != nil { fatal(err) }
-        if err := store.SaveEncryptedRecord(rec, newk); err != nil { fatal(err) }
+    rk, err := p.PrepareRekey(auth.Request{Reason: i18n.T("auth.reason_rekey")})
+    if err != nil { fatal(err) }
+    if p.Mode() == auth.ModeOTP {
+        migrateOTPKeychain(rk.OldKey)
     }
-    if err := keychain.StoreMasterKey(newk, true); err != nil { fatal(err) }
-    fmt.Println("rekeyed master key and re-encrypted all records")
+
+    // 先在临时目录重新加密并校验，提交新 master key 后再替换，任何一步失败都不影响现有密钥
+    n, err := store.ReencryptAll([][]byte{rk.OldKey}, rk.NewKey, rk.Commit)
+    if err != nil { fatal(err) }
+    fmt.Println(i18n.T("rekey.done", n))
+    restartManagedAgent()
 }
 
 func fatal(err error) {

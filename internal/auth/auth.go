@@ -8,7 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"fssh/internal/i18n"
 	"fssh/internal/keychain"
+	"fssh/internal/otp"
+	"fssh/internal/prompt"
 )
 
 // AuthMode 认证模式类型
@@ -19,15 +22,53 @@ const (
 	ModeOTP     AuthMode = "otp"
 )
 
+// Request describes one authentication: why the master key is needed and how
+// to ask the user.
+type Request struct {
+	// Reason is shown in the Touch ID / OTP prompt, e.g. which process wants
+	// which key for which host.
+	Reason string
+	// NoCache forces authentication even when the TTL cache is valid, and the
+	// result is not cached (used for forwarded agent requests and rekey).
+	NoCache bool
+	// Prompter collects OTP input; nil uses prompt.Default().
+	Prompter prompt.Prompter
+}
+
+func (r Request) prompter() prompt.Prompter {
+	if r.Prompter != nil {
+		return r.Prompter
+	}
+	return prompt.Default()
+}
+
+func (r Request) reason() string {
+	if r.Reason != "" {
+		return r.Reason
+	}
+	return i18n.T("auth.reason_default")
+}
+
+// Rekey is a prepared master key rotation. Commit persists NewKey; it must
+// only be called after every record has been re-encrypted under NewKey.
+type Rekey struct {
+	OldKey []byte
+	NewKey []byte
+	Commit func() error
+}
+
 // AuthProvider 统一认证接口
 // 为 Touch ID 和 OTP 两种认证方式提供统一的抽象
 type AuthProvider interface {
 	// UnlockMasterKey 解锁并返回 master key
 	// 可能需要用户交互（Touch ID 或密码+验证码）
-	UnlockMasterKey() ([]byte, error)
+	UnlockMasterKey(req Request) ([]byte, error)
 
-	// IsAvailable 检查认证方式是否可用
-	// Touch ID: 检查设备是否支持
+	// PrepareRekey 认证后生成新的 master key，由调用方重新加密后再提交
+	PrepareRekey(req Request) (*Rekey, error)
+
+	// IsAvailable 检查认证方式是否已初始化
+	// Touch ID: Keychain 中存在 master key
 	// OTP: 检查配置文件是否存在
 	IsAvailable() bool
 
@@ -36,6 +77,24 @@ type AuthProvider interface {
 
 	// ClearCache 清除缓存的敏感数据
 	ClearCache()
+}
+
+// IsInitialized reports whether the current auth mode has been set up,
+// without reading any secret.
+func IsInitialized() (bool, AuthMode, error) {
+	mode, err := LoadMode()
+	if err != nil {
+		return false, "", err
+	}
+	switch mode {
+	case ModeTouchID:
+		exists, err := keychain.MasterKeyExists()
+		return exists, mode, err
+	case ModeOTP:
+		return otp.ConfigExists(), mode, nil
+	default:
+		return false, mode, fmt.Errorf("未知认证模式: %s", mode)
+	}
 }
 
 // GetAuthProvider 自动选择并创建认证提供者

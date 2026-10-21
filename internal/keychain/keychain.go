@@ -3,19 +3,27 @@ package keychain
 import (
     "errors"
     "fmt"
+    "os"
     "time"
 
     kc "github.com/keybase/go-keychain"
     "fssh/internal/macos"
 )
 
-const (
-    serviceNew = "fssh"
-    serviceOld = "fingerpass"
-    account    = "master_key_v1"
-)
+const account = "master_key_v1"
+
+// Keychain items are per macOS user, not per $HOME. FSSH_KEYCHAIN_SERVICE
+// isolates development and test runs from the real master key. Read on every
+// call so tests can set it at runtime.
+func services() (current, legacy string) {
+    if s := os.Getenv("FSSH_KEYCHAIN_SERVICE"); s != "" {
+        return s, s + "-legacy"
+    }
+    return "fssh", "fingerpass"
+}
 
 func MasterKeyExists() (bool, error) {
+    serviceNew, serviceOld := services()
     exists, err := masterKeyExistsForService(serviceNew)
     if err != nil {
         return false, err
@@ -32,7 +40,9 @@ func masterKeyExistsForService(svc string) (bool, error) {
     q.SetService(svc)
     q.SetAccount(account)
     q.SetMatchLimit(kc.MatchLimitOne)
-    q.SetReturnData(true)
+    // Only ask for attributes: reading the secret data could trigger a
+    // Keychain authorization dialog just to check for existence.
+    q.SetReturnAttributes(true)
     res, err := kc.QueryItem(q)
     if err != nil {
         if errors.Is(err, kc.ErrorItemNotFound) {
@@ -44,6 +54,7 @@ func masterKeyExistsForService(svc string) (bool, error) {
 }
 
 func StoreMasterKey(key []byte, overwrite bool) error {
+    serviceNew, _ := services()
     exists, err := MasterKeyExists()
     if err != nil {
         return err
@@ -94,11 +105,20 @@ func StoreMasterKey(key []byte, overwrite bool) error {
     return fmt.Errorf("存储 master key 失败 (尝试 %d 次): %w", maxRetries, err)
 }
 
-func LoadMasterKey() ([]byte, error) {
+// LoadMasterKey shows the Touch ID prompt with reason, then reads the master key.
+func LoadMasterKey(reason string) ([]byte, error) {
     // Gate access behind biometry prompt
-    if err := macos.RequireBiometry("解锁指纹受保护的主密钥以使用 SSH 私钥"); err != nil {
+    if err := macos.RequireBiometry(reason); err != nil {
         return nil, err
     }
+    return LoadMasterKeyWithoutPrompt()
+}
+
+// LoadMasterKeyWithoutPrompt reads the master key without Touch ID. Only use
+// it after the user has already authenticated by other means (e.g. OTP mode
+// migrating away from the Keychain).
+func LoadMasterKeyWithoutPrompt() ([]byte, error) {
+    serviceNew, serviceOld := services()
     res, err := queryMasterKey(serviceNew)
     if err != nil {
         return nil, err
@@ -127,6 +147,7 @@ func queryMasterKey(svc string) ([]kc.QueryResult, error) {
 }
 
 func DeleteMasterKey() error {
+    serviceNew, serviceOld := services()
     it := kc.NewItem()
     it.SetSecClass(kc.SecClassGenericPassword)
     it.SetService(serviceNew)

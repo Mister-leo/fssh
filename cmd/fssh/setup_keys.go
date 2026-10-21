@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"fssh/internal/keychain"
+	"fssh/internal/i18n"
 	"fssh/internal/otp"
 	"fssh/internal/store"
 	"golang.org/x/crypto/ssh"
@@ -105,7 +105,7 @@ func importSSHKeys() error {
 	}
 
 	// Load master key
-	mk, err := keychain.LoadMasterKey()
+	mk, err := unlockMasterKeyErr(i18n.T("auth.reason_import_wizard"))
 	if err != nil {
 		return fmt.Errorf("failed to load master key: %w", err)
 	}

@@ -131,4 +131,310 @@ var messages = map[string]map[Lang]string{
 		EN: "Removed %s",
 		ZH: "已删除 %s",
 	},
+
+	// ---- security (M2) ----
+	"help.usage_otp": {
+		EN: "Usage: fssh otp <subcommand>",
+		ZH: "用法: fssh otp <子命令>",
+	},
+	"cmd.log": {
+		EN: "Show recent signature requests",
+		ZH: "查看签名请求记录",
+	},
+	"cmd.otp": {
+		EN: "Manage OTP mode: recovery, password, secret",
+		ZH: "OTP 模式管理：恢复、改密码、恢复码、密钥",
+	},
+	"cmd.otp.recover": {
+		EN: "Reset a forgotten OTP password with a recovery code",
+		ZH: "用恢复码重置忘记的 OTP 密码",
+	},
+	"cmd.otp.change-password": {
+		EN: "Change the OTP password",
+		ZH: "修改 OTP 密码",
+	},
+	"cmd.otp.regen-recovery": {
+		EN: "Generate 10 new recovery codes (old ones stop working)",
+		ZH: "重新生成 10 个恢复码（旧的作废）",
+	},
+	"cmd.otp.show-secret": {
+		EN: "Show the TOTP secret and QR code again (e.g. for a new phone)",
+		ZH: "重新显示 TOTP 密钥和二维码（如添加到新手机）",
+	},
+	"cli.err_need_tty": {
+		EN: "this command must be run interactively in a terminal",
+		ZH: "该命令需要在终端中交互运行",
+	},
+	"auth.reason_default": {
+		EN: "unlock the fssh master key",
+		ZH: "解锁 fssh 主密钥",
+	},
+	"auth.reason_import": {
+		EN: "import key \"%s\" into fssh",
+		ZH: "将密钥「%s」导入 fssh",
+	},
+	"auth.reason_import_wizard": {
+		EN: "import SSH keys into fssh",
+		ZH: "导入 SSH 密钥到 fssh",
+	},
+	"auth.reason_export": {
+		EN: "export key \"%s\"",
+		ZH: "导出密钥「%s」",
+	},
+	"auth.reason_remove": {
+		EN: "remove key \"%s\"",
+		ZH: "删除密钥「%s」",
+	},
+	"auth.reason_rekey": {
+		EN: "rotate the fssh master key and re-encrypt all keys",
+		ZH: "更换 fssh 主密钥并重新加密所有私钥",
+	},
+	"agent.reason_host": {
+		EN: "%s wants to use key \"%s\" to log in to %s",
+		ZH: "「%s」请求使用密钥「%s」登录 %s",
+	},
+	"agent.reason": {
+		EN: "%s wants to use key \"%s\"",
+		ZH: "「%s」请求使用密钥「%s」",
+	},
+	"agent.reason_forwarded": {
+		EN: "⚠️ Forwarded request (ssh -A): a remote server is asking to use your key.",
+		ZH: "⚠️ 远程转发请求（ssh -A）：远程服务器正在请求使用你的密钥。",
+	},
+	"agent.unknown_process": {
+		EN: "an unknown process",
+		ZH: "未知进程",
+	},
+	"agent.notify_forward_denied": {
+		EN: "Refused %s using key \"%s\" via agent forwarding (forwarded_sign=deny)",
+		ZH: "已拒绝「%s」通过转发使用密钥「%s」（forwarded_sign=deny）",
+	},
+	"agent.notify_decrypt_failed": {
+		EN: "Could not decrypt key \"%s\"; the master key may have changed. Please retry.",
+		ZH: "密钥「%s」解密失败，主密钥可能已更换，请重试",
+	},
+	"agent.otp_preunlock": {
+		EN: "OTP: unlock now so SSH connections don't ask for the password again",
+		ZH: "OTP 认证：现在预先解锁，之后的 SSH 连接无需再输入密码",
+	},
+	"agent.otp_preunlock_reason": {
+		EN: "start the fssh agent",
+		ZH: "启动 fssh agent",
+	},
+	"agent.otp_preunlock_done": {
+		EN: "OTP authentication succeeded",
+		ZH: "OTP 认证成功",
+	},
+	"agent.convenience_reason": {
+		EN: "start the fssh agent (convenience mode decrypts all keys)",
+		ZH: "启动 fssh agent（便捷模式：一次性解密所有私钥）",
+	},
+	"agent.restarted": {
+		EN: "Restarted the fssh agent so it uses the new master key",
+		ZH: "已重启 fssh agent，使新主密钥生效",
+	},
+	"agent.restart_manual": {
+		EN: "Restart the agent to use the new master key: launchctl kickstart -k %s",
+		ZH: "请手动重启 agent 使新主密钥生效: launchctl kickstart -k %s",
+	},
+	"rekey.done": {
+		EN: "Rotated the master key and re-encrypted %d key(s)",
+		ZH: "已更换主密钥并重新加密 %d 个私钥",
+	},
+	"migrate.otp_keychain_done": {
+		EN: "Removed the master key copy older versions left in the Keychain; OTP mode now always requires the password and code",
+		ZH: "已从 Keychain 移除旧版本遗留的主密钥副本，OTP 模式现在必须通过密码和验证码解锁",
+	},
+	"migrate.otp_keychain_differs": {
+		EN: "The Keychain holds an older master key that differs from your OTP key (left from Touch ID mode). Your keys have been re-encrypted under the OTP key and no longer need it, but while it exists the macOS login password alone can unlock fssh.",
+		ZH: "Keychain 中有一个与 OTP 不同的旧主密钥（来自之前的 Touch ID 模式）。当前密钥已改用 OTP 密钥重新加密，不再需要它；但只要它还在，仅凭 macOS 开机密码就能解锁 fssh。",
+	},
+	"migrate.otp_keychain_confirm": {
+		EN: "Delete it now? Backups of ~/.fssh made before switching to OTP will no longer be decryptable",
+		ZH: "现在删除它吗？切换到 OTP 之前备份的 ~/.fssh 将无法再解密",
+	},
+	"migrate.otp_keychain_kept": {
+		EN: "warning: an old master key is still in the Keychain and bypasses OTP. Remove it with: security delete-generic-password -s fssh -a master_key_v1",
+		ZH: "警告：Keychain 中仍有旧主密钥，可绕过 OTP。可用以下命令删除: security delete-generic-password -s fssh -a master_key_v1",
+	},
+	"migrate.otp_keychain_failed": {
+		EN: "warning: could not remove the master key left in the Keychain: %v",
+		ZH: "警告：移除 Keychain 中遗留的主密钥失败: %v",
+	},
+	"log.empty": {
+		EN: "No signature requests recorded yet",
+		ZH: "暂无签名记录",
+	},
+	"log.header": {
+		EN: "TIME\tKEY\tPROCESS\tHOST\tRESULT",
+		ZH: "时间\t密钥\t进程\t主机\t结果",
+	},
+	"log.forwarded": {
+		EN: "[forwarded]",
+		ZH: "[转发]",
+	},
+	"log.result_ok": {
+		EN: "ok",
+		ZH: "成功",
+	},
+	"log.result_denied": {
+		EN: "denied",
+		ZH: "已拒绝",
+	},
+	"log.result_failed": {
+		EN: "failed",
+		ZH: "失败",
+	},
+	"prompt.cancel": {
+		EN: "Cancel",
+		ZH: "取消",
+	},
+	"prompt.ok": {
+		EN: "OK",
+		ZH: "确定",
+	},
+	"otp.prompt_password": {
+		EN: "Enter OTP password: ",
+		ZH: "请输入 OTP 密码: ",
+	},
+	"otp.prompt_code": {
+		EN: "Enter the %d-digit code: ",
+		ZH: "请输入 %d 位验证码: ",
+	},
+	"otp.prompt_new_password": {
+		EN: "New OTP password (at least 12 characters): ",
+		ZH: "设置新的 OTP 密码（至少 12 位）: ",
+	},
+	"otp.prompt_confirm_password": {
+		EN: "Confirm new password: ",
+		ZH: "确认新密码: ",
+	},
+	"otp.prompt_recovery_code": {
+		EN: "Recovery code (XXXX-XXXX-XXXX-XXXX): ",
+		ZH: "请输入恢复码（XXXX-XXXX-XXXX-XXXX）: ",
+	},
+	"otp.retry_password": {
+		EN: "Wrong password, try again.",
+		ZH: "密码错误，请重试。",
+	},
+	"otp.retry_code": {
+		EN: "Wrong code, try again.",
+		ZH: "验证码错误，请重试。",
+	},
+	"otp.err_password": {
+		EN: "wrong OTP password",
+		ZH: "OTP 密码错误",
+	},
+	"otp.err_code": {
+		EN: "wrong verification code 3 times",
+		ZH: "验证码连续 3 次错误",
+	},
+	"otp.err_password_weak": {
+		EN: "The password must be at least 12 characters, try again.",
+		ZH: "密码至少需要 12 个字符，请重试。",
+	},
+	"otp.err_password_mismatch": {
+		EN: "Passwords do not match, try again.",
+		ZH: "两次输入的密码不一致，请重试。",
+	},
+	"otp.err_password_aborted": {
+		EN: "new password not set",
+		ZH: "未能设置新密码",
+	},
+	"otp.err_recovery_code": {
+		EN: "invalid or already used recovery code",
+		ZH: "恢复码无效或已使用",
+	},
+	"otp.err_not_configured": {
+		EN: "OTP mode is not set up; run `fssh init --mode otp` first",
+		ZH: "未配置 OTP 模式，请先运行 `fssh init --mode otp`",
+	},
+	"otp.err_legacy_recovery": {
+		EN: "your recovery codes were created by an older version and cannot recover the password. Log in with your password and run `fssh otp regen-recovery`; if the password is lost too, fssh must be re-initialized",
+		ZH: "你的恢复码由旧版本生成，无法用于找回密码。请用密码登录后运行 `fssh otp regen-recovery` 重新生成；如果密码也忘记了，只能重新初始化",
+	},
+	"otp.legacy_recovery": {
+		EN: "Your OTP recovery codes were created by an older version and cannot recover the password. Run `fssh otp regen-recovery` to replace them.",
+		ZH: "你的 OTP 恢复码由旧版本生成，无法用于找回密码，请运行 `fssh otp regen-recovery` 重新生成。",
+	},
+	"otp.reason_change_password": {
+		EN: "change the OTP password",
+		ZH: "修改 OTP 密码",
+	},
+	"otp.reason_regen_recovery": {
+		EN: "generate new recovery codes",
+		ZH: "重新生成恢复码",
+	},
+	"otp.recover_done": {
+		EN: "OTP password reset. %d recovery code(s) left. If you also lost your phone, run `fssh otp show-secret` to add the secret to an authenticator again.",
+		ZH: "OTP 密码已重置，剩余恢复码 %d 个。如果手机也丢失了，运行 `fssh otp show-secret` 把密钥重新添加到验证器。",
+	},
+	"otp.change_password_done": {
+		EN: "OTP password changed",
+		ZH: "OTP 密码已修改",
+	},
+	"otp.regen_done": {
+		EN: "New recovery codes generated; all previous codes no longer work.",
+		ZH: "已生成新的恢复码，旧恢复码全部作废。",
+	},
+	"otp.show_secret_warning": {
+		EN: "⚠️  This secret is equivalent to your authenticator. Do not screenshot or share it.",
+		ZH: "⚠️  该密钥等同于你的验证器，请勿截图或分享。",
+	},
+	"otp.recovery_title": {
+		EN: "Recovery codes (store them safely: print them or keep them in a password manager):",
+		ZH: "恢复码（请安全保存，打印或存入密码管理器）：",
+	},
+	"otp.recovery_notes": {
+		EN: "⚠️  Each code works once and resets a forgotten OTP password. Keep them safe; lost codes cannot be recovered.",
+		ZH: "⚠️  每个恢复码仅可使用一次，用于忘记 OTP 密码时重置密码；请妥善保管，丢失无法找回。",
+	},
+	"otp.secret_title": {
+		EN: "TOTP settings:",
+		ZH: "TOTP 配置:",
+	},
+	"otp.secret_issuer": {
+		EN: "Issuer:",
+		ZH: "发行者:",
+	},
+	"otp.secret_account": {
+		EN: "Account:",
+		ZH: "账户:",
+	},
+	"otp.secret_key": {
+		EN: "Secret:",
+		ZH: "密钥:",
+	},
+	"otp.secret_params": {
+		EN: "Algorithm/digits/period:",
+		ZH: "算法/位数/间隔:",
+	},
+	"otp.secret_uri": {
+		EN: "otpauth link (can be turned into a QR code):",
+		ZH: "otpauth 链接（可生成二维码）:",
+	},
+	"otp.secret_qr_hint": {
+		EN: "(Install qrencode to show a scannable QR code here: brew install qrencode)",
+		ZH: "（安装 qrencode 后可在此显示二维码: brew install qrencode）",
+	},
+	"otp.init_done": {
+		EN: "OTP authentication initialized",
+		ZH: "OTP 认证已初始化",
+	},
+	"otp.init_add_to_app": {
+		EN: "Scan the QR code with an authenticator app (Google Authenticator, Authy, 1Password, ...) or enter the secret above manually.",
+		ZH: "请用验证器 App（Google Authenticator、Authy、1Password 等）扫描二维码，或手动输入上面的密钥。",
+	},
+	"otp.init_saved": {
+		EN: "Configuration saved to: %s",
+		ZH: "配置已保存到: %s",
+	},
+	"otp.init_security": {
+		EN: "⚠️  Security tips:\n  1. Enable FileVault full-disk encryption\n  2. Keep the recovery codes safe; they cannot be shown again",
+		ZH: "⚠️  安全提示:\n  1. 建议启用 FileVault 全盘加密\n  2. 妥善保管恢复码，之后无法再次查看",
+	},
+	"otp.init_next": {
+		EN: "Next steps:\n  1. Import an SSH key: fssh import --alias myserver --file ~/.ssh/id_ed25519\n  2. Start the agent: fssh agent",
+		ZH: "下一步:\n  1. 导入 SSH 私钥: fssh import --alias myserver --file ~/.ssh/id_ed25519\n  2. 启动 agent: fssh agent",
+	},
 }

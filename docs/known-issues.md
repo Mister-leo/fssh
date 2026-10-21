@@ -15,27 +15,27 @@
   - 现象：`config.json` 中设为 `false` 会被强制改回 `true`，只能用命令行参数开启便捷模式
   - 位置：`internal/config/config.go:56`
 
-- [ ] **P0-3 OTP 模式的双因素可被绕过**
+- [x] **P0-3 OTP 模式的双因素可被绕过**
   - 现象：OTP 初始化时 master key 也写入 Keychain；`import`/`export`/`remove`/`rekey` 走 Keychain 路径，在无 Touch ID 的 Mac 上回退为系统登录密码，只凭开机密码即可 `fssh export` 导出明文私钥
   - 位置：`cmd/fssh/otp_init.go:58`，`cmd/fssh/main.go`（各命令直接调用 `keychain.LoadMasterKey()`）
 
-- [ ] **P0-4 OTP 模式与 LaunchAgent 自启冲突**
+- [x] **P0-4 OTP 模式与 LaunchAgent 自启冲突**
   - 现象：Agent 从自身 stdin 读取密码/验证码；launchd 启动时无 TTY，`preUnlockOTP` 失败退出，`KeepAlive` 导致反复重启。前台运行时验证码也只能在 Agent 终端输入，而非用户执行 ssh 的终端
   - 位置：`internal/agent/server.go:42`、`internal/otp/prompt.go`
 
-- [ ] **P0-5 OTP 预解锁缓存未共享**
+- [x] **P0-5 OTP 预解锁缓存未共享**
   - 现象：`preUnlockOTP` 使用临时 provider，安全 Agent 又创建新 provider，启动时输入的密码/验证码白输，首次 ssh 仍需重新输入
   - 位置：`internal/agent/server.go:113`、`internal/agent/server.go:58`
 
-- [ ] **P0-6 OTP 模式下 `rekey` 导致全部密钥不可用**
+- [x] **P0-6 OTP 模式下 `rekey` 导致全部密钥不可用**
   - 现象：`rekey` 用随机新 key 重新加密所有密钥并写入 Keychain，但 OTP Agent 从 seed 派生 master key，两者不一致，之后签名全部失败
   - 位置：`cmd/fssh/main.go:247`
 
-- [ ] **P0-7 恢复码只生成不可用**
+- [x] **P0-7 恢复码只生成不可用**
   - 现象：`VerifyRecoveryCode` 无任何调用方，没有使用恢复码重置密码的命令；README 承诺“可以用恢复码重置”
   - 位置：`internal/otp/recovery.go:67`
 
-- [ ] **P0-8 认证弹窗不显示请求来源**
+- [x] **P0-8 认证弹窗不显示请求来源**
   - 现象：提示语固定，不显示密钥别名、目标主机、请求进程；开启 `ssh -A` 转发时远端可触发签名，用户无法判断是否该授权
   - 位置：`internal/keychain/keychain.go:99`
 
@@ -53,7 +53,7 @@
   - 现象：只判断 `runtime.GOOS == "darwin"`，Mac mini 也显示 “✓ Your Mac supports Touch ID!” 并默认选 Touch ID
   - 位置：`cmd/fssh/setup.go:128`
 
-- [ ] **P1-4 Agent 协议操作“假成功”**
+- [x] **P1-4 Agent 协议操作“假成功”**
   - 现象：`ssh-add -x`（Lock）、`ssh-add -D`（RemoveAll）返回成功但无效果；`ssh-add` 添加密钥不支持
   - 位置：`internal/agent/secure_agent.go:227-232`
 
@@ -95,6 +95,7 @@
   - crypt、TOTP、ssh config 写入等高风险模块无回归保障
 
 - [ ] **P2-4 文档与实现不一致**
+  - 第二阶段新增内容需写入 README：`fssh otp` 子命令、`fssh log`、`forwarded_sign` 配置、`ssh-add -x/-X/-D` 行为、开发用环境变量 `FSSH_KEYCHAIN_SERVICE`
   - CLAUDE.md 称 OTP 用 scrypt，代码为 PBKDF2
   - README FAQ 编号重复（两个“4.”）
   - `rekey`、`config-gen`、`sshd-align` 及 Shell 的 `add`/`edit`/`delete`/`global` 未写入文档
@@ -138,6 +139,7 @@
   - `fssh list` 输出为 `alias=... fingerprint=...` 机器格式，不显示密钥类型
 
 - [ ] **U-10 认证失败时用户看不懂**
+  - 实测（2026-10-21）：Agent 锁定后 `ssh-keygen -Y sign` 立即回退到 `~/.ssh` 中的明文私钥并提示输入其密码
   - 取消指纹或 Agent 未运行时，ssh 只显示 `agent refused operation` / `Permission denied (publickey)`，没有任何指向 fssh 的提示；若 `~/.ssh` 还有明文 key，会静默回退使用它
 
 - [ ] **U-11 无卸载/停用路径**
@@ -146,3 +148,25 @@
 - [x] **U-12 `remove` 先要求认证再检查是否存在**
   - 现象：输错别名也要先按指纹，按完才报 `no such file or directory`
   - 位置：`cmd/fssh/main.go:241`
+
+## 第二阶段新发现（2026-10-21）
+
+- [x] **P0-9 TOTP 密钥以 Base64 显示，验证器 App 无法添加**
+  - 现象：初始化时显示 `base64(seed)`，验证器只接受 Base32，OTP 模式实际无法完成验证
+  - 修复：改为 Base32，并输出 `otpauth://` 链接（装有 qrencode 时显示二维码）；旧用户用 `fssh otp show-secret` 重新添加
+  - 位置：`internal/otp/init.go`、`internal/otp/seed.go`
+
+- [ ] **P1-10 OTP 的第二因素只是本地检查（设计限制）**
+  - seed 只由密码加密，拿到密码和 `config.enc` 即可推出 master key；TOTP 验证码不提供密码学保护，只能防止“只知道密码、拿不到这台电脑上的配置文件”的情况
+  - 本地方案无法根本解决，需要在 README 中如实说明 OTP 模式的安全边界
+
+- [ ] **P1-11 TOTP 验证码可在有效窗口内重复使用**
+  - `otp.Verify` 允许 ±1 个时间窗口且不记录已用验证码，同一验证码约 90 秒内可重放
+  - 位置：`internal/otp/totp.go`
+
+- [ ] **P1-12 socket 路径过长时报错难懂**
+  - 路径超过 104 字节时只显示 `bind: invalid argument`
+  - 位置：`internal/agent/server.go`
+
+- [ ] **P1-13 `ssh-add -D` 的提示与实际行为不一致**
+  - 显示 “All identities removed”，但 `ssh-add -l` 仍列出密钥（fssh 将其实现为清除解锁缓存，密钥保存在加密存储中）；需在文档中说明

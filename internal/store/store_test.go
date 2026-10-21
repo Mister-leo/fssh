@@ -129,3 +129,103 @@ func TestMetaLookup(t *testing.T) {
 		t.Fatal("FindByFingerprint matched an unknown fingerprint")
 	}
 }
+
+func saveTestKey(t *testing.T, alias string, mk []byte) *Record {
+	t.Helper()
+	rec, err := NewRecordFromPrivateKeyBytes(alias, newKeyPEM(t), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveEncryptedRecord(rec, mk); err != nil {
+		t.Fatal(err)
+	}
+	return rec
+}
+
+func TestReencryptAll(t *testing.T) {
+	setupHome(t)
+	oldKey, newKey := masterKey(), bytes.Repeat([]byte{9}, 32)
+	a := saveTestKey(t, "a", oldKey)
+	saveTestKey(t, "b", oldKey)
+	if err := os.WriteFile(filepath.Join(KeysDir(), "notes.txt"), []byte("keep me"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	metaBefore, _ := LoadMeta("a")
+
+	committed := false
+	n, err := ReencryptAll([][]byte{oldKey}, newKey, func() error { committed = true; return nil })
+	if err != nil || n != 2 || !committed {
+		t.Fatalf("ReencryptAll = %d, %v, committed=%v", n, err, committed)
+	}
+	got, err := LoadDecryptedRecord("a", newKey)
+	if err != nil || !bytes.Equal(got.PKCS8DER, a.PKCS8DER) {
+		t.Fatalf("record not readable with new key: %v", err)
+	}
+	if _, err := LoadDecryptedRecord("a", oldKey); err == nil {
+		t.Fatal("record still readable with old key")
+	}
+	if metaAfter, _ := LoadMeta("a"); metaAfter.CreatedAt != metaBefore.CreatedAt {
+		t.Fatalf("CreatedAt changed: %q -> %q", metaBefore.CreatedAt, metaAfter.CreatedAt)
+	}
+	if b, err := os.ReadFile(filepath.Join(KeysDir(), "notes.txt")); err != nil || string(b) != "keep me" {
+		t.Fatal("non-record files must survive the directory swap")
+	}
+	for _, leftover := range []string{KeysDir() + ".new", KeysDir() + ".old"} {
+		if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+			t.Fatalf("%s left behind", leftover)
+		}
+	}
+}
+
+// A record that cannot be decrypted must abort before commit and leave the
+// store exactly as it was.
+func TestReencryptAllAbortsOnUndecryptableRecord(t *testing.T) {
+	setupHome(t)
+	oldKey, newKey := masterKey(), bytes.Repeat([]byte{9}, 32)
+	saveTestKey(t, "a", oldKey)
+	saveTestKey(t, "z", bytes.Repeat([]byte{3}, 32)) // under a different key
+
+	committed := false
+	if _, err := ReencryptAll([][]byte{oldKey}, newKey, func() error { committed = true; return nil }); err == nil {
+		t.Fatal("expected error")
+	}
+	if committed {
+		t.Fatal("commit must not run when a record fails")
+	}
+	if _, err := LoadDecryptedRecord("a", oldKey); err != nil {
+		t.Fatalf("original record damaged: %v", err)
+	}
+	if _, err := os.Stat(KeysDir() + ".new"); !os.IsNotExist(err) {
+		t.Fatal("staging directory left behind")
+	}
+}
+
+func TestReencryptAllCommitFailureKeepsStore(t *testing.T) {
+	setupHome(t)
+	oldKey, newKey := masterKey(), bytes.Repeat([]byte{9}, 32)
+	saveTestKey(t, "a", oldKey)
+
+	if _, err := ReencryptAll([][]byte{oldKey}, newKey, func() error { return errors.New("keychain write failed") }); err == nil {
+		t.Fatal("expected commit error")
+	}
+	if _, err := LoadDecryptedRecord("a", oldKey); err != nil {
+		t.Fatalf("store must still use the old key: %v", err)
+	}
+}
+
+// Migration case: records written under two different keys.
+func TestReencryptAllWithCandidateKeys(t *testing.T) {
+	setupHome(t)
+	k1, k2 := masterKey(), bytes.Repeat([]byte{3}, 32)
+	saveTestKey(t, "a", k1)
+	saveTestKey(t, "b", k2)
+
+	if n, err := ReencryptAll([][]byte{k1, k2}, k1, nil); err != nil || n != 2 {
+		t.Fatalf("ReencryptAll = %d, %v", n, err)
+	}
+	for _, alias := range []string{"a", "b"} {
+		if _, err := LoadDecryptedRecord(alias, k1); err != nil {
+			t.Fatalf("%s not readable with target key: %v", alias, err)
+		}
+	}
+}

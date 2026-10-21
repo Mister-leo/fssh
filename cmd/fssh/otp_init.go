@@ -2,12 +2,10 @@ package main
 
 import (
 	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"io"
 
 	"fssh/internal/auth"
-	"fssh/internal/crypt"
 	"fssh/internal/keychain"
 	"fssh/internal/otp"
 )
@@ -48,17 +46,7 @@ func initOTPMode(force bool, seedTTL int, algorithm string, digits int) {
 		fatal(err)
 	}
 
-	// 生成 master key（从 OTP seed 派生）
-	masterKey, err := deriveMasterKeyFromSeed(seed, opts)
-	if err != nil {
-		fatal(err)
-	}
-
-	// 保存 master key 到 Keychain（用于 import/export 等命令）
-	if err := keychain.StoreMasterKey(masterKey, force); err != nil {
-		fatal(err)
-	}
-
+	// master key 每次由 seed 派生，不写入 Keychain：写入后只凭开机密码就能绕过 OTP
 	// 显示结果
 	if err := otp.DisplayInitResult(seed, recoveryCodes, algorithm, digits, 30); err != nil {
 		fatal(err)
@@ -125,23 +113,4 @@ func initTouchIDMode(force bool) {
 	}
 
 	fmt.Println("✓ 已成功初始化 master key (Touch ID 保护)")
-}
-
-// deriveMasterKeyFromSeed 从 OTP seed 派生 master key
-// 使用与 OTPProvider 相同的方法，确保一致性
-func deriveMasterKeyFromSeed(seed []byte, opts *otp.InitOptions) ([]byte, error) {
-	// 从配置中读取 master key salt
-	cfg, err := otp.LoadConfig(otp.ConfigPath())
-	if err != nil {
-		return nil, fmt.Errorf("加载配置失败: %w", err)
-	}
-
-	masterKeySalt, err := base64.StdEncoding.DecodeString(cfg.MasterKeySalt)
-	if err != nil {
-		return nil, fmt.Errorf("解码 master key salt 失败: %w", err)
-	}
-
-	// 使用 HKDF 派生 master key
-	masterKey := crypt.HKDF(seed, masterKeySalt, []byte("fssh-master-key-v1"), 32)
-	return masterKey, nil
 }
