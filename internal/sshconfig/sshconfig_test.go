@@ -2,6 +2,7 @@ package sshconfig
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -233,5 +234,59 @@ func TestAgentCoverage(t *testing.T) {
 	os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte("IdentityAgent "+sock+"\nHost a\n"), 0600)
 	if g, _, _ := AgentCoverage(sock); !g {
 		t.Fatal("top-level directive not detected as global")
+	}
+}
+
+func TestBackupsArePruned(t *testing.T) {
+	home := setupSSH(t, map[string]string{"config": "Host a\n    HostName a\n"})
+	cfgPath := filepath.Join(home, ".ssh", "config")
+	for i := 0; i < 8; i++ {
+		os.WriteFile(fmt.Sprintf("%s.bak.%d", cfgPath, 1000+i), []byte("x"), 0600)
+	}
+	os.WriteFile(cfgPath+".bak.manual", []byte("mine"), 0600)
+	if _, err := SetIdentity("a", "/s", "/p.pub"); err != nil {
+		t.Fatal(err)
+	}
+	matches, _ := filepath.Glob(cfgPath + ".bak.*")
+	if len(matches) != keepBackups+1 { // + the user's own .bak.manual
+		t.Fatalf("backups after prune: %v", matches)
+	}
+	if _, err := os.Stat(cfgPath + ".bak.manual"); err != nil {
+		t.Fatal("non-timestamp backup must be left alone")
+	}
+}
+
+func TestRemoveFsshSettings(t *testing.T) {
+	home := setupSSH(t, map[string]string{"config": `Host github.com
+  IdentityAgent ~/.fssh/agent.sock
+  IdentityFile ~/.fssh/pubkeys/work.pub
+  IdentitiesOnly yes
+
+Host box
+  HostName 10.0.0.1
+  IdentityAgent ~/.fssh/agent.sock
+  IdentityFile ~/.fssh/pubkeys/home.pub
+  IdentityFile ~/.ssh/id_other
+  IdentitiesOnly yes
+
+Host untouched
+  HostName u
+`})
+	pubDir := filepath.Join(home, ".fssh", "pubkeys")
+	hosts, err := RemoveFsshSettings(pubDir, filepath.Join(home, ".fssh", "agent.sock"))
+	if err != nil || len(hosts) != 2 {
+		t.Fatalf("RemoveFsshSettings = %v, %v", hosts, err)
+	}
+	out := readConfig(t, home)
+	if strings.Contains(out, "github.com") {
+		t.Errorf("block that only held fssh settings should go:\n%s", out)
+	}
+	for _, want := range []string{"Host box", "HostName 10.0.0.1", "IdentityFile ~/.ssh/id_other", "IdentitiesOnly yes", "Host untouched"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("lost %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "fssh") {
+		t.Errorf("fssh settings left:\n%s", out)
 	}
 }

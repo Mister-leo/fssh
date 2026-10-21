@@ -93,7 +93,7 @@ func IsInitialized() (bool, AuthMode, error) {
 	case ModeOTP:
 		return otp.ConfigExists(), mode, nil
 	default:
-		return false, mode, fmt.Errorf("未知认证模式: %s", mode)
+		return false, mode, fmt.Errorf(i18n.T("auth.unknown_mode"), mode)
 	}
 }
 
@@ -102,29 +102,29 @@ func IsInitialized() (bool, AuthMode, error) {
 func GetAuthProvider(masterKeyTTL int) (AuthProvider, error) {
 	mode, err := LoadMode()
 	if err != nil {
-		return nil, fmt.Errorf("加载认证模式失败: %w", err)
+		return nil, err
 	}
 
 	switch mode {
 	case ModeTouchID:
 		provider := NewTouchIDProvider(masterKeyTTL)
 		if !provider.IsAvailable() {
-			return nil, errors.New("Touch ID 模式未初始化：Keychain 中没有 master key，请运行: fssh init")
+			return nil, errors.New(i18n.T("keychain.not_initialized"))
 		}
 		return provider, nil
 
 	case ModeOTP:
 		provider, err := NewOTPProvider(masterKeyTTL)
 		if err != nil {
-			return nil, fmt.Errorf("OTP 初始化失败: %w", err)
+			return nil, err
 		}
 		if !provider.IsAvailable() {
-			return nil, errors.New("OTP 未配置，请运行: fssh init --mode otp")
+			return nil, errors.New(i18n.T("otp.err_not_configured"))
 		}
 		return provider, nil
 
 	default:
-		return nil, fmt.Errorf("未知认证模式: %s", mode)
+		return nil, fmt.Errorf(i18n.T("auth.unknown_mode"), mode)
 	}
 }
 
@@ -152,17 +152,17 @@ func LoadMode() (AuthMode, error) {
 			// 否则默认使用 OTP
 			return ModeOTP, nil
 		}
-		return "", fmt.Errorf("读取认证模式配置失败: %w", err)
+		return "", fmt.Errorf(i18n.T("auth.mode_read"), err)
 	}
 
 	var cfg modeConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return "", fmt.Errorf("解析认证模式配置失败: %w", err)
+		return "", fmt.Errorf(i18n.T("auth.mode_parse"), err)
 	}
 
 	// 验证版本
 	if cfg.Version != "fssh-auth/v1" {
-		return "", fmt.Errorf("不支持的认证模式配置版本: %s", cfg.Version)
+		return "", fmt.Errorf(i18n.T("auth.mode_parse"), errors.New(cfg.Version))
 	}
 
 	return cfg.Mode, nil
@@ -180,22 +180,22 @@ func SaveMode(mode AuthMode) error {
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return fmt.Errorf("序列化认证模式配置失败: %w", err)
+		return fmt.Errorf("encode auth mode: %w", err)
 	}
 
 	// 确保目录存在
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("创建配置目录失败: %w", err)
+		return fmt.Errorf("create ~/.fssh: %w", err)
 	}
 
 	// 写入文件
 	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("保存认证模式配置失败: %w", err)
+		return fmt.Errorf("write auth mode: %w", err)
 	}
 	// WriteFile 不会修改已存在文件的权限，旧版本创建的文件是 0644
 	if err := os.Chmod(path, 0600); err != nil {
-		return fmt.Errorf("设置认证模式配置权限失败: %w", err)
+		return fmt.Errorf("chmod auth mode: %w", err)
 	}
 
 	return nil

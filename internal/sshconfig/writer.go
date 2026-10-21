@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -235,8 +237,36 @@ func backupSSHConfig() (string, error) {
 	if err := copyFile(configPath, backupPath); err != nil {
 		return "", fmt.Errorf("failed to create backup: %w", err)
 	}
+	pruneBackups(configPath, keepBackups)
 
 	return backupPath, nil
+}
+
+// keepBackups is how many config.bak.<unix time> files are kept.
+const keepBackups = 5
+
+// pruneBackups deletes all but the newest n backups of configPath.
+func pruneBackups(configPath string, n int) {
+	matches, err := filepath.Glob(configPath + ".bak.*")
+	if err != nil {
+		return
+	}
+	type backup struct {
+		path string
+		ts   int64
+	}
+	var backups []backup
+	for _, m := range matches {
+		ts, err := strconv.ParseInt(strings.TrimPrefix(m, configPath+".bak."), 10, 64)
+		if err != nil {
+			continue // not ours
+		}
+		backups = append(backups, backup{m, ts})
+	}
+	sort.Slice(backups, func(i, j int) bool { return backups[i].ts > backups[j].ts })
+	for i := n; i < len(backups); i++ {
+		os.Remove(backups[i].path)
+	}
 }
 
 func readSSHConfigLines() ([]string, error) {

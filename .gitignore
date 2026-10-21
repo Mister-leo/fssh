@@ -5,3 +5,7 @@
 *.sock
 .claude
 CLAUDE.md
+
+# build output
+/fssh
+/dist/

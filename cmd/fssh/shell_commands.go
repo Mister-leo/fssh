@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"fssh/internal/i18n"
 	"net"
 	"os"
 	"path/filepath"
@@ -59,24 +60,24 @@ type ShellContext struct {
 
 // cmdAdd adds a new SSH host configuration
 func cmdAdd(ctx *ShellContext) error {
-	fmt.Println("\n=== Add New SSH Host ===")
+	fmt.Println(i18n.T("shell.add_new_ssh_host"))
 
 	cfg := &sshconfig.HostConfig{}
 
 	// 1. Host Alias (required)
 	for {
-		line, err := ctx.liner.Prompt("Host alias (e.g., myserver): ")
+		line, err := ctx.liner.Prompt(i18n.T("shell.host_alias_e_g_myserver"))
 		if err != nil {
 			return err
 		}
 		alias := strings.TrimSpace(line)
 		if alias == "" {
-			fmt.Println("Error: Host alias is required")
+			fmt.Println(i18n.T("shell.error_host_alias_is_required"))
 			continue
 		}
 		// Check if already exists
 		if _, exists := ctx.byName[alias]; exists {
-			fmt.Printf("Warning: Host '%s' already exists. Use 'edit %s' to modify.\n", alias, alias)
+			fmt.Printf(i18n.T("shell.warning_host_s_already_exists_use"), alias, alias)
 			return nil
 		}
 		cfg.Name = alias
@@ -85,13 +86,13 @@ func cmdAdd(ctx *ShellContext) error {
 
 	// 2. Hostname/IP (required)
 	for {
-		line, err := ctx.liner.Prompt("Hostname or IP: ")
+		line, err := ctx.liner.Prompt(i18n.T("shell.hostname_or_ip"))
 		if err != nil {
 			return err
 		}
 		hostname := strings.TrimSpace(line)
 		if hostname == "" {
-			fmt.Println("Error: Hostname is required")
+			fmt.Println(i18n.T("shell.error_hostname_is_required"))
 			continue
 		}
 		cfg.Hostname = hostname
@@ -99,22 +100,22 @@ func cmdAdd(ctx *ShellContext) error {
 	}
 
 	// 3. Username (optional)
-	line, _ := ctx.liner.Prompt("Username [press Enter to skip]: ")
+	line, _ := ctx.liner.Prompt(i18n.T("shell.username_press_enter_to_skip"))
 	cfg.User = strings.TrimSpace(line)
 
 	// 4. Port (optional)
-	line, _ = ctx.liner.Prompt("Port [22]: ")
+	line, _ = ctx.liner.Prompt(i18n.T("shell.port_22"))
 	port := strings.TrimSpace(line)
 	if port != "" && port != "22" {
 		cfg.Port = port
 	}
 
 	// 5. Private Key Selection
-	fmt.Println("\nPrivate Key Configuration:")
-	fmt.Println("  1) Use fssh agent (recommended)")
-	fmt.Println("  2) Direct IdentityFile path")
-	fmt.Println("  3) None (password authentication)")
-	line, _ = ctx.liner.Prompt("Choice [1]: ")
+	fmt.Println(i18n.T("shell.private_key_configuration"))
+	fmt.Println(i18n.T("shell.1_use_fssh_agent_recommended"))
+	fmt.Println(i18n.T("shell.2_direct_identityfile_path"))
+	fmt.Println(i18n.T("shell.3_none_password_authentication"))
+	line, _ = ctx.liner.Prompt(i18n.T("shell.choice_1"))
 	choice := strings.TrimSpace(line)
 	if choice == "" {
 		choice = "1"
@@ -125,7 +126,7 @@ func cmdAdd(ctx *ShellContext) error {
 		applyAgentIdentity(cfg, chooseKey(ctx))
 
 	case "2":
-		line, _ := ctx.liner.Prompt("IdentityFile path: ")
+		line, _ := ctx.liner.Prompt(i18n.T("shell.identityfile_path"))
 		idFile := strings.TrimSpace(line)
 		if idFile != "" {
 			cfg.IdentityFile = []string{idFile}
@@ -133,16 +134,16 @@ func cmdAdd(ctx *ShellContext) error {
 
 	case "3":
 		// No identity configuration
-		fmt.Println("Using password authentication")
+		fmt.Println(i18n.T("shell.using_password_authentication"))
 	}
 
 	// 6. Proxy Configuration
-	fmt.Println("\nProxy Configuration:")
-	fmt.Println("  1) No proxy")
-	fmt.Println("  2) SOCKS5 proxy")
-	fmt.Println("  3) SSH jump host (ProxyJump)")
-	fmt.Println("  4) Custom ProxyCommand")
-	line, _ = ctx.liner.Prompt("Choice [1]: ")
+	fmt.Println(i18n.T("shell.proxy_configuration"))
+	fmt.Println(i18n.T("shell.1_no_proxy"))
+	fmt.Println(i18n.T("shell.2_socks5_proxy"))
+	fmt.Println(i18n.T("shell.3_ssh_jump_host_proxyjump"))
+	fmt.Println(i18n.T("shell.4_custom_proxycommand"))
+	line, _ = ctx.liner.Prompt(i18n.T("shell.choice_1"))
 	proxyChoice := strings.TrimSpace(line)
 	if proxyChoice == "" {
 		proxyChoice = "1"
@@ -150,8 +151,8 @@ func cmdAdd(ctx *ShellContext) error {
 
 	switch proxyChoice {
 	case "2":
-		proxyHost, _ := ctx.liner.Prompt("SOCKS5 proxy host: ")
-		proxyPort, _ := ctx.liner.Prompt("SOCKS5 proxy port [1080]: ")
+		proxyHost, _ := ctx.liner.Prompt(i18n.T("shell.socks5_proxy_host"))
+		proxyPort, _ := ctx.liner.Prompt(i18n.T("shell.socks5_proxy_port_1080"))
 		if proxyPort == "" {
 			proxyPort = "1080"
 		}
@@ -159,7 +160,7 @@ func cmdAdd(ctx *ShellContext) error {
 		// Detect which tool to use
 		fmt.Println("  a) nc (netcat)")
 		fmt.Println("  b) ncat (nmap ncat)")
-		tool, _ := ctx.liner.Prompt("Tool [a]: ")
+		tool, _ := ctx.liner.Prompt(i18n.T("shell.tool_a"))
 
 		proxyType := sshconfig.ProxyTypeSocks5NC
 		if tool == "b" {
@@ -169,7 +170,7 @@ func cmdAdd(ctx *ShellContext) error {
 			strings.TrimSpace(proxyHost), proxyPort)
 
 	case "3":
-		jumpHost, _ := ctx.liner.Prompt("Jump host (user@host or just host): ")
+		jumpHost, _ := ctx.liner.Prompt(i18n.T("shell.jump_host_user_host_or_just"))
 		cfg.ProxyJump = strings.TrimSpace(jumpHost)
 
 	case "4":
@@ -178,7 +179,7 @@ func cmdAdd(ctx *ShellContext) error {
 	}
 
 	// 7. Confirm and save
-	fmt.Println("\n=== Summary ===")
+	fmt.Println(i18n.T("shell.summary"))
 	fmt.Printf("Host: %s\n", cfg.Name)
 	fmt.Printf("Hostname: %s\n", cfg.Hostname)
 	if cfg.User != "" {
@@ -200,26 +201,26 @@ func cmdAdd(ctx *ShellContext) error {
 		fmt.Printf("ProxyCommand: %s\n", cfg.ProxyCommand)
 	}
 
-	confirm, _ := ctx.liner.Prompt("\nSave this configuration? [Y/n]: ")
+	confirm, _ := ctx.liner.Prompt(i18n.T("shell.save_this_configuration_y_n"))
 	confirm = cleanLinerInput(confirm)
 	if strings.ToLower(confirm) == "n" {
-		fmt.Println("Cancelled")
+		fmt.Println(i18n.T("shell.cancelled"))
 		return nil
 	}
 
 	// Write to SSH config
 	if err := sshconfig.WriteHostConfig(cfg, false); err != nil {
-		return fmt.Errorf("failed to save: %w", err)
+		return fmt.Errorf(i18n.T("shell.failed_to_save_w"), err)
 	}
 
 	// Reload context
 	if err := reloadHosts(ctx); err != nil {
-		fmt.Printf("Warning: Failed to reload hosts: %v\n", err)
+		fmt.Printf(i18n.T("shell.warning_failed_to_reload_hosts_v"), err)
 	}
 
-	fmt.Printf("\n✓ Host '%s' added to ~/.ssh/config\n", cfg.Name)
-	fmt.Printf("✓ Backup created\n")
-	fmt.Printf("\nYou can now connect with: ssh %s\n", cfg.Name)
+	fmt.Printf(i18n.T("shell.host_s_added_to_ssh_config"), cfg.Name)
+	fmt.Print(i18n.T("shell.backup_created"))
+	fmt.Printf(i18n.T("shell.you_can_now_connect_with_ssh"), cfg.Name)
 
 	return nil
 }
@@ -228,7 +229,7 @@ func cmdAdd(ctx *ShellContext) error {
 func cmdEdit(ctx *ShellContext, args string) error {
 	hostName := strings.TrimSpace(args)
 	if hostName == "" {
-		fmt.Println("Usage: edit <host>")
+		fmt.Println(i18n.T("shell.usage_edit_host"))
 		return nil
 	}
 
@@ -238,8 +239,8 @@ func cmdEdit(ctx *ShellContext, args string) error {
 		return err
 	}
 
-	fmt.Printf("\n=== Edit Host: %s ===\n", cfg.Name)
-	fmt.Println("Press Enter to keep current value, or type new value")
+	fmt.Printf(i18n.T("shell.edit_host_s"), cfg.Name)
+	fmt.Println(i18n.T("shell.press_enter_to_keep_current_value"))
 
 	// Edit Hostname
 	currentHostname := cfg.Hostname
@@ -280,18 +281,18 @@ func cmdEdit(ctx *ShellContext, args string) error {
 	}
 
 	// Edit Identity Configuration
-	line, _ = ctx.liner.Prompt("\nChange identity configuration? [y/N]: ")
+	line, _ = ctx.liner.Prompt(i18n.T("shell.change_identity_configuration_y_n"))
 	if strings.ToLower(strings.TrimSpace(line)) == "y" {
-		fmt.Println("  1) Use fssh agent")
-		fmt.Println("  2) Direct IdentityFile")
-		fmt.Println("  3) None")
-		choice, _ := ctx.liner.Prompt("Choice: ")
+		fmt.Println(i18n.T("shell.1_use_fssh_agent"))
+		fmt.Println(i18n.T("shell.2_direct_identityfile"))
+		fmt.Println(i18n.T("shell.3_none"))
+		choice, _ := ctx.liner.Prompt(i18n.T("shell.choice"))
 
 		switch strings.TrimSpace(choice) {
 		case "1":
 			applyAgentIdentity(cfg, chooseKey(ctx))
 		case "2":
-			idFile, _ := ctx.liner.Prompt("IdentityFile path: ")
+			idFile, _ := ctx.liner.Prompt(i18n.T("shell.identityfile_path"))
 			cfg.IdentityFile = []string{strings.TrimSpace(idFile)}
 			cfg.IdentityAgent = ""
 			cfg.IdentitiesOnly = ""
@@ -303,13 +304,13 @@ func cmdEdit(ctx *ShellContext, args string) error {
 	}
 
 	// Edit Proxy Configuration
-	line, _ = ctx.liner.Prompt("\nChange proxy configuration? [y/N]: ")
+	line, _ = ctx.liner.Prompt(i18n.T("shell.change_proxy_configuration_y_n"))
 	if strings.ToLower(strings.TrimSpace(line)) == "y" {
-		fmt.Println("  1) No proxy")
-		fmt.Println("  2) SOCKS5 proxy")
-		fmt.Println("  3) SSH jump host")
-		fmt.Println("  4) Custom ProxyCommand")
-		proxyChoice, _ := ctx.liner.Prompt("Choice: ")
+		fmt.Println(i18n.T("shell.1_no_proxy"))
+		fmt.Println(i18n.T("shell.2_socks5_proxy"))
+		fmt.Println(i18n.T("shell.3_ssh_jump_host"))
+		fmt.Println(i18n.T("shell.4_custom_proxycommand"))
+		proxyChoice, _ := ctx.liner.Prompt(i18n.T("shell.choice"))
 
 		switch strings.TrimSpace(proxyChoice) {
 		case "1":
@@ -317,14 +318,14 @@ func cmdEdit(ctx *ShellContext, args string) error {
 			cfg.ProxyJump = ""
 
 		case "2":
-			proxyHost, _ := ctx.liner.Prompt("SOCKS5 proxy host: ")
-			proxyPort, _ := ctx.liner.Prompt("SOCKS5 proxy port [1080]: ")
+			proxyHost, _ := ctx.liner.Prompt(i18n.T("shell.socks5_proxy_host"))
+			proxyPort, _ := ctx.liner.Prompt(i18n.T("shell.socks5_proxy_port_1080"))
 			if proxyPort == "" {
 				proxyPort = "1080"
 			}
 			fmt.Println("  a) nc (netcat)")
 			fmt.Println("  b) ncat (nmap ncat)")
-			tool, _ := ctx.liner.Prompt("Tool [a]: ")
+			tool, _ := ctx.liner.Prompt(i18n.T("shell.tool_a"))
 
 			proxyType := sshconfig.ProxyTypeSocks5NC
 			if tool == "b" {
@@ -335,7 +336,7 @@ func cmdEdit(ctx *ShellContext, args string) error {
 			cfg.ProxyJump = ""
 
 		case "3":
-			jumpHost, _ := ctx.liner.Prompt("Jump host (user@host or just host): ")
+			jumpHost, _ := ctx.liner.Prompt(i18n.T("shell.jump_host_user_host_or_just"))
 			cfg.ProxyJump = strings.TrimSpace(jumpHost)
 			cfg.ProxyCommand = ""
 
@@ -347,22 +348,22 @@ func cmdEdit(ctx *ShellContext, args string) error {
 	}
 
 	// Confirm and save
-	confirm, _ := ctx.liner.Prompt("\nSave changes? [Y/n]: ")
+	confirm, _ := ctx.liner.Prompt(i18n.T("shell.save_changes_y_n"))
 	confirm = cleanLinerInput(confirm)
 	if strings.ToLower(confirm) == "n" {
-		fmt.Println("Cancelled")
+		fmt.Println(i18n.T("shell.cancelled"))
 		return nil
 	}
 
 	if err := sshconfig.WriteHostConfig(cfg, true); err != nil {
-		return fmt.Errorf("failed to save: %w", err)
+		return fmt.Errorf(i18n.T("shell.failed_to_save_w"), err)
 	}
 
 	if err := reloadHosts(ctx); err != nil {
-		fmt.Printf("Warning: Failed to reload hosts: %v\n", err)
+		fmt.Printf(i18n.T("shell.warning_failed_to_reload_hosts_v"), err)
 	}
 
-	fmt.Printf("\n✓ Host '%s' updated\n", cfg.Name)
+	fmt.Printf(i18n.T("shell.host_s_updated"), cfg.Name)
 	return nil
 }
 
@@ -370,7 +371,7 @@ func cmdEdit(ctx *ShellContext, args string) error {
 func cmdDelete(ctx *ShellContext, args string) error {
 	hostName := strings.TrimSpace(args)
 	if hostName == "" {
-		fmt.Println("Usage: delete <host>")
+		fmt.Println(i18n.T("shell.usage_delete_host"))
 		return nil
 	}
 
@@ -381,28 +382,28 @@ func cmdDelete(ctx *ShellContext, args string) error {
 	}
 
 	// Show details and confirm
-	fmt.Printf("\n=== Delete Host: %s ===\n", cfg.Name)
+	fmt.Printf(i18n.T("shell.delete_host_s"), cfg.Name)
 	fmt.Printf("Hostname: %s\n", cfg.Hostname)
 	if cfg.User != "" {
 		fmt.Printf("User: %s\n", cfg.User)
 	}
 
-	line, _ := ctx.liner.Prompt("\nType 'yes' to confirm deletion: ")
+	line, _ := ctx.liner.Prompt(i18n.T("shell.type_yes_to_confirm_deletion"))
 	line = cleanLinerInput(line)
 	if line != "yes" {
-		fmt.Println("Cancelled")
+		fmt.Println(i18n.T("shell.cancelled"))
 		return nil
 	}
 
 	if err := sshconfig.DeleteHostConfig(hostName); err != nil {
-		return fmt.Errorf("failed to delete: %w", err)
+		return fmt.Errorf(i18n.T("shell.failed_to_delete_w"), err)
 	}
 
 	if err := reloadHosts(ctx); err != nil {
-		fmt.Printf("Warning: Failed to reload hosts: %v\n", err)
+		fmt.Printf(i18n.T("shell.warning_failed_to_reload_hosts_v"), err)
 	}
 
-	fmt.Printf("\n✓ Host '%s' deleted from ~/.ssh/config\n", hostName)
+	fmt.Printf(i18n.T("shell.host_s_deleted_from_ssh_config"), hostName)
 	return nil
 }
 
@@ -410,7 +411,7 @@ func cmdDelete(ctx *ShellContext, args string) error {
 func cmdShow(ctx *ShellContext, args string) error {
 	hostName := strings.TrimSpace(args)
 	if hostName == "" {
-		fmt.Println("Usage: show <host>")
+		fmt.Println(i18n.T("shell.usage_show_host"))
 		return nil
 	}
 	return printHostDetails(ctx, hostName, false)
@@ -420,12 +421,12 @@ func cmdShow(ctx *ShellContext, args string) error {
 func cmdInfo(ctx *ShellContext, args string) error {
 	query := strings.TrimSpace(args)
 	if query == "" {
-		fmt.Println("Usage: info <id|alias|hostname|ip>")
+		fmt.Println(i18n.T("shell.usage_info_id_alias_hostname_ip"))
 		return nil
 	}
 	hostName := resolveHostQuery(ctx, query)
 	if hostName == "" {
-		return fmt.Errorf("host not found: %s", query)
+		return fmt.Errorf(i18n.T("shell.host_not_found_s"), query)
 	}
 	return printHostDetails(ctx, hostName, true)
 }
@@ -435,7 +436,7 @@ func printHostDetails(ctx *ShellContext, hostName string, resolve bool) error {
 	cfg, err := sshconfig.LoadHostConfig(hostName)
 	if err != nil {
 		if !known {
-			return fmt.Errorf("host not found: %s", hostName)
+			return fmt.Errorf(i18n.T("shell.host_not_found_s"), hostName)
 		}
 		// defined in an Include'd file: only what LoadHostInfos knows
 		cfg = &sshconfig.HostConfig{Name: hi.Name, Hostname: hi.Hostname}
@@ -448,7 +449,7 @@ func printHostDetails(ctx *ShellContext, hostName string, resolve bool) error {
 	if cfg.Hostname != "" {
 		fmt.Printf("Hostname: %s\n", cfg.Hostname)
 	} else {
-		fmt.Printf("Hostname: %s (no HostName, ssh connects to the host name itself)\n", cfg.Name)
+		fmt.Printf(i18n.T("shell.hostname_s_no_hostname_ssh_connects"), cfg.Name)
 	}
 	if resolve {
 		target := cfg.Hostname
@@ -458,13 +459,13 @@ func printHostDetails(ctx *ShellContext, hostName string, resolve bool) error {
 		if ip, fake := lookupIP(target, time.Second); ip != "" {
 			fmt.Printf("IP: %s\n", ip)
 		} else if fake {
-			fmt.Println("IP: (hidden: proxy fake-ip address)")
+			fmt.Println(i18n.T("shell.ip_hidden_proxy_fake_ip_address"))
 		}
 	}
 	if known && hi.Source != "" {
 		home, _ := os.UserHomeDir()
 		if hi.Source != filepath.Join(home, ".ssh", "config") {
-			fmt.Printf("Defined in: %s (read-only in fssh)\n", tildify(hi.Source))
+			fmt.Printf(i18n.T("shell.defined_in_s_read_only_in"), tildify(hi.Source))
 		}
 	}
 
@@ -474,11 +475,11 @@ func printHostDetails(ctx *ShellContext, hostName string, resolve bool) error {
 	if cfg.Port != "" {
 		fmt.Printf("Port: %s\n", cfg.Port)
 	} else {
-		fmt.Printf("Port: 22 (default)\n")
+		fmt.Print(i18n.T("shell.port_22_default"))
 	}
 
 	if key := ctx.boundKey[cfg.Name]; key != "" {
-		fmt.Printf("fssh key: %s (IdentitiesOnly %s)\n", key, cfg.IdentitiesOnly)
+		fmt.Printf(i18n.T("shell.fssh_key_s_identitiesonly_s"), key, cfg.IdentitiesOnly)
 	}
 	if cfg.IdentityAgent != "" {
 		fmt.Printf("IdentityAgent: %s\n", cfg.IdentityAgent)
@@ -621,25 +622,25 @@ func loadEditableHost(ctx *ShellContext, hostName string) (*sshconfig.HostConfig
 	if hi, ok := ctx.byName[hostName]; ok && hi.Source != "" {
 		home, _ := os.UserHomeDir()
 		if hi.Source != filepath.Join(home, ".ssh", "config") {
-			return nil, fmt.Errorf("host %s is defined in %s; edit that file directly", hostName, tildify(hi.Source))
+			return nil, fmt.Errorf(i18n.T("shell.host_s_is_defined_in_s"), hostName, tildify(hi.Source))
 		}
 	}
-	return nil, fmt.Errorf("host not found: %w", err)
+	return nil, fmt.Errorf(i18n.T("shell.host_not_found_w"), err)
 }
 
 // chooseKey asks which imported key a host should use. Empty input means no
 // binding: the host is offered every key in the agent.
 func chooseKey(ctx *ShellContext) string {
 	if len(ctx.importedKeys) == 0 {
-		fmt.Println("Warning: No keys imported yet. Run 'fssh import' or 'fssh keygen' first.")
+		fmt.Println(i18n.T("shell.warning_no_keys_imported_yet_run"))
 		return ""
 	}
-	fmt.Println("\nImported keys:")
+	fmt.Println(i18n.T("shell.imported_keys"))
 	for i, key := range ctx.importedKeys {
 		fmt.Printf("  %d) %s\n", i+1, key)
 	}
 	for {
-		line, _ := ctx.liner.Prompt("Key for this host (number or alias, Enter = any key in the agent): ")
+		line, _ := ctx.liner.Prompt(i18n.T("shell.key_for_this_host_number_or"))
 		choice := strings.TrimSpace(line)
 		if choice == "" {
 			return ""
@@ -649,7 +650,7 @@ func chooseKey(ctx *ShellContext) string {
 				return key
 			}
 		}
-		fmt.Println("Unknown key, try again.")
+		fmt.Println(i18n.T("shell.unknown_key_try_again"))
 	}
 }
 
@@ -673,17 +674,17 @@ func applyAgentIdentity(cfg *sshconfig.HostConfig, alias string) {
 func cmdGlobalShow(ctx *ShellContext) error {
 	cfg, found, err := sshconfig.LoadGlobalConfig()
 	if err != nil {
-		return fmt.Errorf("failed to load global config: %w", err)
+		return fmt.Errorf(i18n.T("shell.failed_to_load_global_config_w"), err)
 	}
 
 	if !found {
-		fmt.Println("\nNo Host * block found in ~/.ssh/config")
-		fmt.Println("\nYou can create one with: global edit")
+		fmt.Println(i18n.T("shell.no_host_block_found_in_ssh"))
+		fmt.Println(i18n.T("shell.you_can_create_one_with_global"))
 		return nil
 	}
 
 	// Display all configured options
-	fmt.Println("\n=== Global SSH Configuration (Host *) ===")
+	fmt.Println(i18n.T("shell.global_ssh_configuration_host"))
 	fmt.Println()
 
 	displayed := false
@@ -733,7 +734,7 @@ func cmdGlobalShow(ctx *ShellContext) error {
 	}
 
 	if !displayed {
-		fmt.Println("  (empty)")
+		fmt.Println(i18n.T("shell.empty"))
 	}
 
 	fmt.Println()
@@ -744,26 +745,26 @@ func cmdGlobalShow(ctx *ShellContext) error {
 func cmdGlobalEdit(ctx *ShellContext) error {
 	cfg, found, err := sshconfig.LoadGlobalConfig()
 	if err != nil {
-		return fmt.Errorf("failed to load global config: %w", err)
+		return fmt.Errorf(i18n.T("shell.failed_to_load_global_config_w"), err)
 	}
 
 	if !found {
 		// Prompt user to create
-		fmt.Println("\nHost * block does not exist.")
-		line, err := ctx.liner.Prompt("Create it now? [Y/n]: ")
+		fmt.Println(i18n.T("shell.host_block_does_not_exist"))
+		line, err := ctx.liner.Prompt(i18n.T("shell.create_it_now_y_n"))
 		if err != nil {
 			return err
 		}
 		if strings.ToLower(strings.TrimSpace(line)) == "n" {
-			fmt.Println("Cancelled")
+			fmt.Println(i18n.T("shell.cancelled"))
 			return nil
 		}
 		cfg = sshconfig.NewGlobalConfig()
 	}
 
-	fmt.Println("\n=== Edit Global Configuration (Host *) ===")
-	fmt.Println("Press Enter to keep current value, type new value to change, or '-' to clear")
-	fmt.Println("Type '?' to see detailed help for an option")
+	fmt.Println(i18n.T("shell.edit_global_configuration_host"))
+	fmt.Println(i18n.T("shell.press_enter_to_keep_current_value_2"))
+	fmt.Println(i18n.T("shell.type_to_see_detailed_help_for"))
 	fmt.Println()
 
 	// Helper function to edit a single field
@@ -774,7 +775,7 @@ func cmdGlobalEdit(ctx *ShellContext) error {
 		}
 		fmt.Printf("\n%s\n", desc)
 		if len(validValues) > 0 {
-			fmt.Printf("Valid values: %s\n", strings.Join(validValues, ", "))
+			fmt.Printf(i18n.T("shell.valid_values_s"), strings.Join(validValues, ", "))
 		}
 		line, _ := ctx.liner.Prompt(fmt.Sprintf("%s [%s]: ", key, current))
 		line = strings.TrimSpace(line)
@@ -864,19 +865,19 @@ func cmdGlobalEdit(ctx *ShellContext) error {
 
 	// Confirm and save
 	fmt.Println()
-	confirm, _ := ctx.liner.Prompt("Save global configuration? [Y/n]: ")
+	confirm, _ := ctx.liner.Prompt(i18n.T("shell.save_global_configuration_y_n"))
 	confirm = cleanLinerInput(confirm)
 	if strings.ToLower(confirm) == "n" {
-		fmt.Println("Cancelled")
+		fmt.Println(i18n.T("shell.cancelled"))
 		return nil
 	}
 
 	if err := sshconfig.WriteGlobalConfig(cfg); err != nil {
-		return fmt.Errorf("failed to save: %w", err)
+		return fmt.Errorf(i18n.T("shell.failed_to_save_w"), err)
 	}
 
-	fmt.Println("\n✓ Global configuration updated")
-	fmt.Println("✓ Backup created")
+	fmt.Println(i18n.T("shell.global_configuration_updated"))
+	fmt.Println(i18n.T("shell.backup_created_2"))
 	return nil
 }
 
@@ -885,8 +886,8 @@ func cmdGlobalSet(ctx *ShellContext, args string) error {
 	// Parse "key value"
 	parts := strings.SplitN(strings.TrimSpace(args), " ", 2)
 	if len(parts) < 2 {
-		fmt.Println("Usage: global set <key> <value>")
-		fmt.Println("\nSupported options:")
+		fmt.Println(i18n.T("shell.usage_global_set_key_value"))
+		fmt.Println(i18n.T("shell.supported_options"))
 
 		// Display all options with descriptions
 		for _, key := range sshconfig.GetGlobalOptionNames() {
@@ -898,9 +899,9 @@ func cmdGlobalSet(ctx *ShellContext, args string) error {
 			fmt.Println()
 		}
 
-		fmt.Println("\nExample:")
+		fmt.Println(i18n.T("shell.example"))
 		fmt.Println("  global set ServerAliveInterval 60")
-		fmt.Println("\nTip: Use 'global edit' for interactive editing with help")
+		fmt.Println(i18n.T("shell.tip_use_global_edit_for_interactive"))
 		return nil
 	}
 
@@ -908,11 +909,11 @@ func cmdGlobalSet(ctx *ShellContext, args string) error {
 	value := strings.TrimSpace(parts[1])
 
 	if err := sshconfig.SetGlobalOption(key, value); err != nil {
-		return fmt.Errorf("failed to set option: %w", err)
+		return fmt.Errorf(i18n.T("shell.failed_to_set_option_w"), err)
 	}
 
-	fmt.Printf("\n✓ Set %s = %s\n", key, value)
-	fmt.Println("✓ Backup created")
+	fmt.Printf(i18n.T("shell.set_s_s"), key, value)
+	fmt.Println(i18n.T("shell.backup_created_2"))
 	return nil
 }
 
@@ -920,8 +921,8 @@ func cmdGlobalSet(ctx *ShellContext, args string) error {
 func cmdGlobalUnset(ctx *ShellContext, args string) error {
 	key := strings.TrimSpace(args)
 	if key == "" {
-		fmt.Println("Usage: global unset <key>")
-		fmt.Println("\nSupported options:")
+		fmt.Println(i18n.T("shell.usage_global_unset_key"))
+		fmt.Println(i18n.T("shell.supported_options"))
 
 		// Display all options with descriptions
 		for _, key := range sshconfig.GetGlobalOptionNames() {
@@ -929,17 +930,17 @@ func cmdGlobalUnset(ctx *ShellContext, args string) error {
 			fmt.Printf("  %-30s - %s\n", key, desc)
 		}
 
-		fmt.Println("\nExample:")
+		fmt.Println(i18n.T("shell.example"))
 		fmt.Println("  global unset UseKeychain")
 		return nil
 	}
 
 	if err := sshconfig.UnsetGlobalOption(key); err != nil {
-		return fmt.Errorf("failed to unset option: %w", err)
+		return fmt.Errorf(i18n.T("shell.failed_to_unset_option_w"), err)
 	}
 
-	fmt.Printf("\n✓ Unset %s\n", key)
-	fmt.Println("✓ Backup created")
+	fmt.Printf(i18n.T("shell.unset_s"), key)
+	fmt.Println(i18n.T("shell.backup_created_2"))
 	return nil
 }
 
@@ -967,10 +968,10 @@ func cmdGlobal(ctx *ShellContext, args string) error {
 	}
 
 	// Unknown subcommand
-	fmt.Println("Unknown global subcommand. Usage:")
-	fmt.Println("  global show           - Display current global config")
-	fmt.Println("  global edit           - Edit global config interactively")
-	fmt.Println("  global set <key> <value> - Set a single option")
-	fmt.Println("  global unset <key>    - Remove a single option")
+	fmt.Println(i18n.T("shell.unknown_global_subcommand_usage"))
+	fmt.Println(i18n.T("shell.global_show_display_current_global_config_2"))
+	fmt.Println(i18n.T("shell.global_edit_edit_global_config_interactively_2"))
+	fmt.Println(i18n.T("shell.global_set_key_value_set_a_2"))
+	fmt.Println(i18n.T("shell.global_unset_key_remove_a_single_2"))
 	return nil
 }

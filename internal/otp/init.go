@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"time"
 
+	"fssh/internal/crypt"
 	"fssh/internal/i18n"
 )
 
@@ -32,24 +33,22 @@ func DefaultInitOptions() *InitOptions {
 	}
 }
 
-// Initialize 初始化 OTP 配置
-// 1. 生成随机 OTP seed
-// 2. 使用密码加密 seed
-// 3. 生成恢复码
-// 4. 保存配置
-func Initialize(opts *InitOptions) (seed []byte, recoveryCodes []string, err error) {
+// NewConfig builds an OTP configuration in memory: a random seed encrypted
+// with opts.Password and, if requested, recovery codes. Nothing is saved, so
+// callers can verify the authenticator works before committing.
+func NewConfig(opts *InitOptions) (cfg *Config, seed []byte, recoveryCodes []string, err error) {
 	// 1. 生成随机 OTP seed (20 字节，标准 TOTP seed 长度)
 	seed = make([]byte, 20)
 	if _, err := rand.Read(seed); err != nil {
-		return nil, nil, fmt.Errorf("生成 OTP seed 失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("generate OTP seed: %w", err)
 	}
 
 	masterKeySalt := make([]byte, 32)
 	if _, err := rand.Read(masterKeySalt); err != nil {
-		return nil, nil, fmt.Errorf("生成 master key salt 失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("generate master key salt: %w", err)
 	}
 
-	cfg := &Config{
+	cfg = &Config{
 		Version:              "fssh-otp/v1",
 		Algorithm:            opts.Algorithm,
 		Digits:               opts.Digits,
@@ -61,23 +60,39 @@ func Initialize(opts *InitOptions) (seed []byte, recoveryCodes []string, err err
 
 	// 2. 使用密码加密 seed（内含密码强度校验）
 	if err := SetPassword(cfg, opts.Password, seed); err != nil {
-		return nil, nil, fmt.Errorf("密码强度不足: %w", err)
+		return nil, nil, nil, err
 	}
 
 	// 3. 生成恢复码，每个恢复码都单独加密一份 seed
 	if opts.GenerateRecovery {
 		recoveryCodes, err = SetRecoveryCodes(cfg, seed, DefaultRecoveryCodes)
 		if err != nil {
-			return nil, nil, fmt.Errorf("生成恢复码失败: %w", err)
+			return nil, nil, nil, fmt.Errorf("generate recovery codes: %w", err)
 		}
 	}
+	return cfg, seed, recoveryCodes, nil
+}
 
-	// 4. 保存配置
-	if err := SaveConfig(cfg); err != nil {
-		return nil, nil, fmt.Errorf("保存配置失败: %w", err)
+// Initialize 初始化并保存 OTP 配置
+func Initialize(opts *InitOptions) (seed []byte, recoveryCodes []string, err error) {
+	cfg, seed, recoveryCodes, err := NewConfig(opts)
+	if err != nil {
+		return nil, nil, err
 	}
-
+	if err := SaveConfig(cfg); err != nil {
+		return nil, nil, err
+	}
 	return seed, recoveryCodes, nil
+}
+
+// MasterKey derives the master key from the seed: HKDF-SHA256 with the
+// config's salt. Must match auth.OTPProvider.
+func MasterKey(cfg *Config, seed []byte) ([]byte, error) {
+	salt, err := base64.StdEncoding.DecodeString(cfg.MasterKeySalt)
+	if err != nil {
+		return nil, fmt.Errorf("decode master key salt: %w", err)
+	}
+	return crypt.HKDF(seed, salt, []byte("fssh-master-key-v1"), 32), nil
 }
 
 // Account returns the label shown in authenticator apps, e.g. "alice@macbook".

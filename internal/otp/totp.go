@@ -15,17 +15,26 @@ import (
 // Verify 验证 TOTP 验证码
 // 支持 ±1 个时间窗口容错（±30秒），防止时钟偏移
 func Verify(seed []byte, userCode string, algorithm string, digits int, period int) bool {
-	now := time.Now().Unix()
-	counter := now / int64(period)
+	_, ok := VerifyCounter(seed, userCode, algorithm, digits, period)
+	return ok
+}
+
+// VerifyCounter is Verify that also returns the matched time step, so
+// callers can reject a code that was already used (replay).
+func VerifyCounter(seed []byte, userCode string, algorithm string, digits int, period int) (int64, bool) {
+	if period <= 0 {
+		period = 30
+	}
+	counter := time.Now().Unix() / int64(period)
 
 	// 允许 ±1 个时间窗口（±30秒容错）
 	for offset := int64(-1); offset <= 1; offset++ {
 		expected := Generate(seed, counter+offset, algorithm, digits)
-		if userCode == expected {
-			return true
+		if hmac.Equal([]byte(userCode), []byte(expected)) {
+			return counter + offset, true
 		}
 	}
-	return false
+	return 0, false
 }
 
 // Generate 生成 TOTP 验证码

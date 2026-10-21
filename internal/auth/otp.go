@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"runtime"
 	"strings"
 	"sync"
@@ -44,7 +43,9 @@ type OTPProvider struct {
 
 	legacyWarned bool
 
-	now func() time.Time
+	// replay guard; tests may substitute it
+	counters otp.CounterStore
+	now      func() time.Time
 }
 
 // NewOTPProvider 创建 OTP 认证提供者
@@ -52,13 +53,14 @@ func NewOTPProvider(masterKeyTTL int) (*OTPProvider, error) {
 	path := otp.ConfigPath()
 	cfg, err := otp.LoadConfig(path)
 	if err != nil {
-		return nil, fmt.Errorf("加载 OTP 配置失败: %w", err)
+		return nil, err
 	}
 
 	return &OTPProvider{
 		configPath:   path,
 		config:       cfg,
 		masterKeyTTL: masterKeyTTL,
+		counters:     otp.FileCounters{},
 		now:          time.Now,
 	}, nil
 }
@@ -124,9 +126,22 @@ func (p *OTPProvider) verifyCode(req Request, cfg *otp.Config, seed []byte) erro
 			return err
 		}
 		code = strings.TrimSpace(code)
-		if validCodeFormat(code, cfg.Digits) && otp.Verify(seed, code, cfg.Algorithm, cfg.Digits, cfg.Period) {
-			log.Info("TOTP 验证成功", nil)
-			return nil
+		if validCodeFormat(code, cfg.Digits) {
+			if counter, ok := otp.VerifyCounter(seed, code, cfg.Algorithm, cfg.Digits, cfg.Period); ok {
+				if counter > p.counters.Last() {
+					if err := p.counters.Record(counter); err != nil {
+						log.Warn("记录 TOTP 时间窗口失败", map[string]interface{}{"error": err.Error()})
+					}
+					log.Info("TOTP 验证成功", nil)
+					return nil
+				}
+				// valid but already used: wait for the next code
+				if attempt >= otpMaxAttempts {
+					return errors.New(i18n.T("otp.err_code"))
+				}
+				hint = i18n.T("otp.retry_code_used") + "\n"
+				continue
+			}
 		}
 		if attempt >= otpMaxAttempts {
 			return errors.New(i18n.T("otp.err_code"))
@@ -159,11 +174,10 @@ func (p *OTPProvider) authenticate(req Request) (seed, masterKey []byte, err err
 		return nil, nil, err
 	}
 
-	salt, err := base64.StdEncoding.DecodeString(cfg.MasterKeySalt)
+	masterKey, err = otp.MasterKey(cfg, seed)
 	if err != nil {
-		return nil, nil, fmt.Errorf("解码 master key salt 失败: %w", err)
+		return nil, nil, err
 	}
-	masterKey = crypt.HKDF(seed, salt, []byte(masterKeyInfo), 32)
 
 	p.warnLegacyRecovery(req, cfg)
 	return seed, masterKey, nil

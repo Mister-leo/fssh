@@ -23,8 +23,9 @@ import (
 
 // commandNames lists commands in the order shown by `fssh help`.
 var commandNames = []string{
-    "init", "import", "keygen", "list", "pubkey", "bind", "unbind", "export", "remove", "rekey",
-    "status", "doctor", "agent", "log", "otp", "shell", "config-gen", "sshd-align", "version", "help",
+    "init", "import", "keygen", "list", "pubkey", "bind", "unbind", "export", "remove",
+    "backup", "restore", "rekey", "mode", "status", "doctor", "agent", "log", "otp", "shell",
+    "config-gen", "sshd-align", "uninstall", "version", "help",
 }
 
 func main() {
@@ -73,6 +74,14 @@ func main() {
         cmdUnbind()
     case "doctor":
         cmdDoctor()
+    case "backup":
+        cmdBackup()
+    case "restore":
+        cmdRestore()
+    case "mode":
+        cmdMode()
+    case "uninstall":
+        cmdUninstall()
     case "otp":
         cmdOTP()
     case "log":
@@ -133,6 +142,9 @@ func cmdHelp(args []string) {
     case "otp":
         printOTPHelp()
         return
+    case "mode":
+        fmt.Println(i18n.T("mode.usage"))
+        return
     }
     // Re-dispatch with -h: each command's FlagSet prints its flags and exits 0.
     os.Args = []string{os.Args[0], name, "-h"}
@@ -159,7 +171,7 @@ func isInitialized() bool {
 
 func cmdInit() {
     fs := flag.NewFlagSet("init", flag.ExitOnError)
-    force := fs.Bool("force", false, "recreate master key if exists")
+    force := fs.Bool("force", false, "start over: move existing keys aside and create a new master key")
     mode := fs.String("mode", "", "authentication mode: touchid or otp (empty = interactive prompt)")
     seedTTL := fs.Int("seed-unlock-ttl", 3600, "OTP seed cache time (seconds), OTP mode only")
     algorithm := fs.String("algorithm", "SHA1", "TOTP algorithm: SHA1, SHA256, SHA512, OTP mode only")
@@ -167,33 +179,51 @@ func cmdInit() {
     interactive := fs.Bool("interactive", false, "run full setup wizard")
     nonInteractive := fs.Bool("non-interactive", false, "disable all interactive prompts")
     fs.Parse(os.Args[2:])
+    o := otpOptions{seedTTL: *seedTTL, algorithm: *algorithm, digits: *digits}
 
-    // Decide whether to run interactive mode
-    isTTY := term.IsTerminal(int(os.Stdin.Fd()))
-    shouldRunInteractive := *interactive || (isTTY && *mode == "" && !*nonInteractive)
-
-    if shouldRunInteractive {
-        runInteractiveSetup(*force, *seedTTL, *algorithm, *digits)
-    } else {
-        runLegacyInit(*force, *mode, *seedTTL, *algorithm, *digits)
+    if *interactive || (isTTY() && *mode == "" && !*nonInteractive) {
+        runInteractiveSetup(*force, o)
+        return
     }
+    runNonInteractiveInit(*force, *mode, o)
 }
 
-// runLegacyInit executes the original non-interactive initialization
-func runLegacyInit(force bool, mode string, seedTTL int, algorithm string, digits int) {
-    // Default to touchid if mode not specified
+// runNonInteractiveInit initializes one auth mode without the wizard.
+func runNonInteractiveInit(force bool, mode string, o otpOptions) {
     if mode == "" {
-        mode = "touchid"
+        mode = string(auth.ModeTouchID)
+    }
+    target := auth.AuthMode(mode)
+    if target != auth.ModeTouchID && target != auth.ModeOTP {
+        fatal(errors.New(i18n.T("init.err_mode", mode)))
     }
 
-    // 根据模式选择初始化方式
-    switch mode {
-    case "touchid":
-        initTouchIDMode(force)
-    case "otp":
-        initOTPMode(force, seedTTL, algorithm, digits)
+    initialized, current, err := auth.IsInitialized()
+    if err != nil {
+        fatal(err)
+    }
+    switch {
+    case initialized && !force && current == target:
+        fmt.Println(i18n.T("init.already", current))
+        return
+    case initialized && !force:
+        fatal(errors.New(i18n.T("init.already_other", current, target)))
+    case initialized && force:
+        fmt.Println(i18n.T("init.force_reset"))
+        resetStore()
     default:
-        fatal(fmt.Errorf("不支持的认证模式: %s (支持 touchid 或 otp)", mode))
+        moveAsideOrphans()
+    }
+    initMode(target, o)
+}
+
+// moveAsideOrphans handles records left without a master key (e.g. the
+// Keychain item was deleted): a new master key could never decrypt them,
+// so they are moved aside instead of silently mixed in.
+func moveAsideOrphans() {
+    if metas, _ := store.ListMeta(); len(metas) > 0 {
+        fmt.Println(i18n.T("init.orphans", len(metas)))
+        resetStore()
     }
 }
 
@@ -271,6 +301,7 @@ func cmdExport() {
     fs := flag.NewFlagSet("export", flag.ExitOnError)
     alias := fs.String("alias", "", "alias name")
     out := fs.String("out", "", "output path")
+    format := fs.String("format", "openssh", "openssh (usable by ssh, optional passphrase) or pkcs8 (unencrypted PEM)")
     pass := fs.String("passphrase", "", "DEPRECATED: passphrase in CLI may leak; prefer --ask-passphrase or --passphrase-file or --passphrase-stdin")
     ask := fs.Bool("ask-passphrase", false, "read passphrase securely from TTY")
     passFile := fs.String("passphrase-file", "", "read passphrase from file path")
@@ -278,38 +309,50 @@ func cmdExport() {
     force := fs.Bool("force", false, "overwrite output if exists")
     fs.Parse(os.Args[2:])
     if *alias == "" || *out == "" {
-        fatal(errors.New("alias and out are required"))
+        fatal(errors.New(i18n.T("export.usage")))
+    }
+    if *format != "openssh" && *format != "pkcs8" {
+        fatal(errors.New(i18n.T("export.err_format", *format)))
     }
     if !*force {
         if _, err := os.Stat(*out); err == nil {
-            fatal(fmt.Errorf("output exists: %s", *out))
+            fatal(errors.New(i18n.T("export.err_exists", *out)))
         }
     }
     // 先确认密钥存在，再认证
     if _, err := store.LoadMeta(*alias); err != nil {
         fatal(aliasError(*alias, err))
     }
+    p, err := resolvePassphrase(*pass, *ask, *passFile, *passStdin, i18n.T("export.prompt_passphrase"))
+    if err != nil { fatal(err) }
+    if p != "" && *format == "pkcs8" {
+        fatal(errors.New(i18n.T("export.err_pkcs8_passphrase")))
+    }
     mk := unlockMasterKey(i18n.T("auth.reason_export", *alias))
     rec, err := store.LoadDecryptedRecord(*alias, mk)
     if err != nil {
         fatal(err)
     }
-    p, err := resolvePassphrase(*pass, *ask, *passFile, *passStdin, "Export PEM passphrase (optional, press Enter for none): ")
-    if err != nil { fatal(err) }
-    pemBytes, err := store.ExportPKCS8PEM(rec, p)
-    if err != nil {
+    var data []byte
+    if *format == "pkcs8" {
+        data = store.ExportPKCS8PEM(rec)
+    } else if data, err = store.ExportOpenSSH(rec, p); err != nil {
         fatal(err)
     }
-    if err := os.WriteFile(*out, pemBytes, 0600); err != nil {
+    if err := os.WriteFile(*out, data, 0600); err != nil {
         fatal(err)
     }
-    fmt.Printf("exported %s to %s (PKCS#8 PEM)%s\n", rec.Alias, *out, func() string { if p != "" { return " with passphrase" } ; return "" }())
+    if p == "" {
+        fmt.Println(i18n.T("export.done_plain", rec.Alias, *out))
+    } else {
+        fmt.Println(i18n.T("export.done", rec.Alias, *out))
+    }
 }
 
 func cmdAgent() {
     cfg, err := config.Load()
     if err != nil {
-        fatal(fmt.Errorf("load ~/.fssh/config.json: %w", err))
+        fatal(fmt.Errorf(i18n.T("cli.config_invalid"), err))
     }
     fs := flag.NewFlagSet("agent", flag.ExitOnError)
     sock := fs.String("socket", cfg.Socket, "unix socket path for SSH agent")
@@ -378,7 +421,7 @@ func resolvePassphrase(cli string, ask bool, file string, stdin bool, prompt str
     if ask { cnt++ }
     if file != "" { cnt++ }
     if stdin { cnt++ }
-    if cnt > 1 { return "", errors.New("specify only one of passphrase sources") }
+    if cnt > 1 { return "", errors.New(i18n.T("cli.one_passphrase_source")) }
     if cli != "" { return cli, nil }
     if ask {
         fd := int(os.Stdin.Fd())

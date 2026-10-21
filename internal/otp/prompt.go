@@ -2,7 +2,9 @@ package otp
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"fssh/internal/i18n"
 	"os"
 	"strings"
 
@@ -31,52 +33,6 @@ func PromptPassword(prompt string) (string, error) {
 	}
 
 	return string(password), nil
-}
-
-// PromptPasswordWithConfirm 提示输入密码并确认
-func PromptPasswordWithConfirm(prompt, confirmPrompt string) (string, error) {
-	password1, err := PromptPassword(prompt)
-	if err != nil {
-		return "", err
-	}
-
-	password2, err := PromptPassword(confirmPrompt)
-	if err != nil {
-		return "", err
-	}
-
-	if password1 != password2 {
-		return "", fmt.Errorf("两次输入的密码不一致")
-	}
-
-	return password1, nil
-}
-
-// PromptCode 提示输入 TOTP 验证码
-func PromptCode(prompt string) (string, error) {
-	fmt.Print(prompt)
-
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Scan()
-	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("读取验证码失败: %w", err)
-	}
-
-	// 使用 cleanInput 清理控制字符
-	code := cleanInput(scanner.Text())
-
-	// 验证格式（6或8位数字）
-	if len(code) != 6 && len(code) != 8 {
-		return "", fmt.Errorf("验证码必须是6位或8位数字")
-	}
-
-	for _, c := range code {
-		if c < '0' || c > '9' {
-			return "", fmt.Errorf("验证码只能包含数字")
-		}
-	}
-
-	return code, nil
 }
 
 // PromptConfirm 提示用户确认（y/n）
@@ -153,7 +109,7 @@ func PromptInput(prompt string) (string, error) {
 func ValidatePasswordStrength(password string) error {
 	// 最小长度检查
 	if len(password) < 12 {
-		return fmt.Errorf("密码至少需要12位字符")
+		return errors.New(i18n.T("otp.err_password_weak"))
 	}
 
 	// 可选：添加更多密码强度检查

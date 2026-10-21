@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"fssh/internal/i18n"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,34 +17,34 @@ func addToSSHConfig() error {
 	socketPath := agentSocket()
 
 	if ok, err := sshconfig.AgentConfigured(socketPath); err != nil {
-		return fmt.Errorf("failed to read SSH config: %w", err)
+		return errors.New(i18n.T("sshsetup.err", err))
 	} else if ok {
-		fmt.Println("✓ SSH config already contains fssh agent configuration")
+		fmt.Println("✓ " + i18n.T("doctor.ssh_ok"))
 		return nil
 	}
 
 	// Another agent (e.g. 1Password) may already be configured; the fssh block
 	// goes first and would take precedence for every host.
 	if other, _ := otherIdentityAgent(socketPath); other != "" {
-		fmt.Printf("⚠️  SSH config already uses another agent: %s\n", other)
-		if !otp.PromptConfirm("Do you want fssh agent to take precedence for all hosts?") {
-			fmt.Println("Skipped SSH config update")
+		fmt.Println("⚠️  " + i18n.T("sshsetup.other_agent", other))
+		if !otp.PromptConfirm(i18n.T("sshsetup.other_agent_confirm")) {
+			fmt.Println(i18n.T("sshsetup.skipped"))
 			displayManualInstructions(socketPath)
 			return nil
 		}
 	}
 
-	fmt.Println("To use fssh agent automatically, we can add configuration to ~/.ssh/config")
-	if !otp.PromptConfirm("Do you want to update SSH config?") {
-		fmt.Println("Skipped SSH config update")
+	fmt.Println(i18n.T("sshsetup.explain"))
+	if !otp.PromptConfirm(i18n.T("sshsetup.confirm")) {
+		fmt.Println(i18n.T("sshsetup.skipped"))
 		displayManualInstructions(socketPath)
 		return nil
 	}
 
 	if _, err := sshconfig.EnsureAgentBlock(tildify(socketPath)); err != nil {
-		return fmt.Errorf("failed to update SSH config: %w", err)
+		return errors.New(i18n.T("sshsetup.err", err))
 	}
-	fmt.Println("✓ Updated SSH config: ~/.ssh/config (a backup was saved next to it)")
+	fmt.Println("✓ " + i18n.T("sshsetup.done"))
 	return nil
 }
 
@@ -75,12 +77,6 @@ func otherIdentityAgent(socketPath string) (string, error) {
 // displayManualInstructions shows manual configuration instructions
 func displayManualInstructions(socketPath string) {
 	fmt.Println()
-	fmt.Println("To use fssh agent manually, add this to your ~/.ssh/config:")
-	fmt.Println()
-	fmt.Println("  Host *")
-	fmt.Printf("      IdentityAgent %s\n", socketPath)
-	fmt.Println()
-	fmt.Println("Or set the environment variable:")
-	fmt.Printf("  export SSH_AUTH_SOCK=%s\n", socketPath)
+	fmt.Println(i18n.T("doctor.fix_ssh", tildify(socketPath)))
 	fmt.Println()
 }

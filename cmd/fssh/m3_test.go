@@ -91,8 +91,8 @@ func TestParseInterleaved(t *testing.T) {
 }
 
 func TestPlistProgram(t *testing.T) {
-	plist := generatePlistContent("/tmp/x.log")
-	if got := plistProgram(plist); got != "/usr/local/bin/fssh" {
+	plist := generatePlistContent("/opt/homebrew/bin/fssh", "/tmp/x.log")
+	if got := plistProgram(plist); got != "/opt/homebrew/bin/fssh" {
 		t.Fatalf("plistProgram = %q", got)
 	}
 }
@@ -199,4 +199,83 @@ func captureStdout(t *testing.T, f func()) string {
 	b := make([]byte, 64*1024)
 	n, _ := r.Read(b)
 	return string(b[:n])
+}
+
+func TestShellEnvBlock(t *testing.T) {
+	dir := t.TempDir()
+	zshrc := filepath.Join(dir, ".zshrc")
+	os.WriteFile(zshrc, []byte("alias ll='ls -l'\n"), 0600)
+
+	if changed, err := ensureShellEnv(zshrc, "/Users/x/.fssh/agent.sock"); err != nil || !changed {
+		t.Fatalf("ensureShellEnv = %v, %v", changed, err)
+	}
+	b, _ := os.ReadFile(zshrc)
+	if !strings.Contains(string(b), `export SSH_AUTH_SOCK="/Users/x/.fssh/agent.sock"`) || !strings.HasPrefix(string(b), "alias ll") {
+		t.Fatalf("unexpected rc:\n%s", b)
+	}
+	if fi, _ := os.Stat(zshrc); fi.Mode().Perm() != 0600 {
+		t.Error("file mode not preserved")
+	}
+	if changed, _ := ensureShellEnv(zshrc, "/Users/x/.fssh/agent.sock"); changed {
+		t.Error("ensureShellEnv must be idempotent")
+	}
+	if removed, err := removeShellEnv(zshrc); err != nil || !removed {
+		t.Fatalf("removeShellEnv = %v, %v", removed, err)
+	}
+	if b, _ := os.ReadFile(zshrc); string(b) != "alias ll='ls -l'\n" {
+		t.Fatalf("rc not restored exactly: %q", b)
+	}
+
+	fish := filepath.Join(dir, "config.fish")
+	ensureShellEnv(fish, "/s")
+	if b, _ := os.ReadFile(fish); !strings.Contains(string(b), `set -gx SSH_AUTH_SOCK "/s"`) {
+		t.Fatalf("fish syntax: %s", b)
+	}
+}
+
+func TestBrewBinary(t *testing.T) {
+	for in, want := range map[string]string{
+		"/opt/homebrew/Cellar/fssh/1.2.0/bin/fssh": "/opt/homebrew/bin/fssh",
+		"/usr/local/Cellar/fssh/HEAD-abc/bin/fssh": "/usr/local/bin/fssh",
+		"/usr/local/bin/fssh":                      "",
+	} {
+		if got := brewBinary(in); got != want {
+			t.Errorf("brewBinary(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestResetStoreMovesDataAside(t *testing.T) {
+	home := fakeHome(t)
+	deleted := false
+	orig := deleteMasterKey
+	deleteMasterKey = func() error { deleted = true; return nil }
+	t.Cleanup(func() { deleteMasterKey = orig })
+
+	key := filepath.Join(home, "k")
+	writeKeyFile(t, key, "")
+	b, _ := os.ReadFile(key)
+	rec, err := store.NewRecordFromPrivateKeyBytes("a", b, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveEncryptedRecord(rec, make([]byte, 32)); err != nil {
+		t.Fatal(err)
+	}
+
+	captureStdout(t, moveAsideOrphans)
+
+	if !deleted {
+		t.Error("master key not deleted")
+	}
+	if metas, _ := store.ListMeta(); len(metas) != 0 {
+		t.Error("records still in the active store")
+	}
+	moved, _ := filepath.Glob(store.KeysDir() + ".reset-*")
+	if len(moved) != 1 {
+		t.Fatalf("old records not kept aside: %v", moved)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".fssh", "auth_mode.json")); !os.IsNotExist(err) {
+		t.Error("auth mode not cleared")
+	}
 }

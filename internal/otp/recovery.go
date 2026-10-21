@@ -38,7 +38,7 @@ func generateSingleRecoveryCode() (string, error) {
 
 	bytes := make([]byte, recoveryCodeLength)
 	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("生成随机数失败: %w", err)
+		return "", fmt.Errorf("generate random bytes: %w", err)
 	}
 
 	parts := make([]string, 4)
@@ -108,7 +108,7 @@ func SetRecoveryCodes(cfg *Config, seed []byte, n int) ([]string, error) {
 	wrapped := make([]WrappedSeed, n)
 	for i, c := range codes {
 		if wrapped[i], err = sealSeed(c, seed); err != nil {
-			return nil, fmt.Errorf("加密恢复码副本失败: %w", err)
+			return nil, fmt.Errorf("encrypt seed for recovery code: %w", err)
 		}
 	}
 	cfg.RecoveryCodesHash = HashRecoveryCodes(codes)

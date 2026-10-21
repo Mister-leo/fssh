@@ -225,7 +225,7 @@ func cmdKeygen() {
 func agentSocket() string {
 	cfg, err := config.Load()
 	if err != nil {
-		fatal(fmt.Errorf("load ~/.fssh/config.json: %w", err))
+		fatal(fmt.Errorf(i18n.T("cli.config_invalid"), err))
 	}
 	return cfg.Socket
 }

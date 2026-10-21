@@ -4,277 +4,132 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-fssh is a macOS SSH private key manager that provides Touch ID or OTP (One-Time Password) authentication for SSH connections. It acts as an SSH agent that securely stores and manages encrypted private keys, eliminating the need to enter passphrases repeatedly while maintaining security.
+fssh is a macOS SSH private key manager and SSH agent. Private keys are stored encrypted under a master key; each signature is unlocked with Touch ID (master key in the Keychain) or OTP (password + TOTP; master key derived from an encrypted seed). It also ships an interactive shell for the hosts in `~/.ssh/config`.
 
-**Core Purpose**: Replace plaintext SSH keys with encrypted storage, unlock via biometric (Touch ID) or TOTP, and provide an interactive shell for managing SSH hosts.
+Open problems and their status are tracked in `docs/known-issues.md`; fix designs are in `docs/fix-plan.md`. Tick an item there when it is fixed and add newly found problems to it.
 
 ## Build and Development Commands
 
 ```bash
-# Build the binary
-go build ./cmd/fssh
+go build ./cmd/fssh          # writes ./fssh (git-ignored; never commit it)
+go vet ./...
+go test -race ./...
 
-# Install to /usr/local/bin
-go build -o /usr/local/bin/fssh ./cmd/fssh
-
-# Run tests (if any)
-go test ./...
-
-# Initialize master key (Touch ID mode - default)
-./fssh init
-
-# Initialize with OTP mode (for devices without Touch ID)
-./fssh init --mode otp --seed-unlock-ttl 3600
-
-# Import SSH private key
-./fssh import -alias mykey -file ~/.ssh/id_rsa --ask-passphrase
-
-# List imported keys
-./fssh list
-
-# Start SSH agent (secure mode, Touch ID/OTP per signature)
-./fssh agent --unlock-ttl-seconds 600
-
-# Start SSH agent (convenience mode, decrypt all on startup)
-./fssh agent --require-touch-id-per-sign=false
-
-# Export private key
-./fssh export -alias mykey -out /path/to/key.pem --ask-passphrase
-
-# Interactive shell for SSH connections
-./fssh shell
-# or simply
-./fssh
-
-# Remove a key
-./fssh remove -alias mykey
-
-# Rotate master key and re-encrypt all keys
-./fssh rekey
-
-# Check system status
-./fssh status
-
-# Generate SSH config entries
-./fssh config-gen
-
-# Align sshd config for RSA-SHA2 support
-./fssh sshd-align
+# Release build as CI does it (CGO is required: Touch ID + Keychain)
+CGO_ENABLED=1 GOARCH=arm64 go build -ldflags "-X main.version=v1.2.3" ./cmd/fssh
 ```
 
-## Architecture Overview
+### Testing rules
 
-### Authentication Layers
+- **Never call the Keychain while `HOME` points at a temp dir.** macOS looks for the login keychain under `$HOME/Library/Keychains` and shows a "Keychain Not Found" dialog on the user's screen. Tests that use a fake HOME must avoid Keychain paths: write `~/.fssh/auth_mode.json` with mode `otp` first (see `cmd/fssh/m3_test.go: fakeHome`), or stub the call (`deleteMasterKey` in `cmd/fssh/mode.go`).
+- Keychain tests are opt-in: `FSSH_KEYCHAIN_TESTS=1 go test ./cmd/fssh -run Keychain`. They use `FSSH_KEYCHAIN_SERVICE` to isolate the item name and symlink the real `~/Library` into the temp HOME.
+- `FSSH_KEYCHAIN_SERVICE=<name>` isolates manual runs from the real master key.
+- `ssh` reads config from the passwd home, not `$HOME`; use `ssh -F <file> -G <host>` to inspect a test config.
+- Unix socket paths are limited to 103 bytes; use a short `--socket` in temp dirs.
+- OTP codes are single-use (replay guard in `~/.fssh/otp/last_counter`); tests that need several codes per 30 s window set `p.counters = nopCounters{}`.
 
-The project supports two authentication modes via a unified `AuthProvider` interface:
+## Architecture
 
-1. **Touch ID Mode** (default for macOS with Touch ID):
-   - Master key stored in macOS Keychain
-   - Biometric unlock via `internal/macos/touchid_darwin.go`
-   - Hardware-backed security
+### Authentication (`internal/auth`)
 
-2. **OTP Mode** (for devices without Touch ID):
-   - Master key derived from password-encrypted OTP seed
-   - TOTP verification (RFC 6238) via authenticator apps
-   - Seed cached with TTL, supports recovery codes
-   - Configuration stored in `~/.fssh/otp/config.enc`
+`AuthProvider` (auth.go) is the only way to obtain the master key:
 
-Mode selection is stored in `~/.fssh/auth_mode.json` and determined by `internal/auth/auth.go:GetAuthProvider()`.
-
-### Encryption Architecture
-
-**Master Key Flow**:
-```
-User Auth (Touch ID/OTP) → Master Key → HKDF per-file key → AES-256-GCM → Encrypted Private Key
+```go
+UnlockMasterKey(req Request) ([]byte, error)   // Request{Reason, NoCache, Prompter}
+PrepareRekey(req Request) (*Rekey, error)        // OldKey, NewKey, Commit()
+IsAvailable() bool; Mode() AuthMode; ClearCache()
 ```
 
-- **Master Key**: 32-byte key from Keychain (Touch ID) or password-derived (OTP)
-- **Per-file Keys**: Derived using HKDF with unique salt per private key
-- **Encryption**: AES-256-GCM with unique nonce, fingerprint as AAD
-- **Storage**: JSON files in `~/.fssh/keys/*.enc`
+- `Reason` is shown in the prompt (which process / key / host).
+- `NoCache` forces authentication and skips the TTL cache (forwarded agent requests, rekey, mode switch).
+- Both providers hold a mutex across the whole prompt, so concurrent signatures show one prompt.
+- `touchid.go`: Keychain master key + `macos.RequireBiometry(reason)`; falls back to the login password when biometry is unavailable (`macos.BiometryAvailable`).
+- `otp.go`: password decrypts the seed (seed cache = `seed_unlock_ttl_seconds`), then a TOTP code (master key cache = `unlock_ttl_seconds`). Config is re-read on every authentication so rekey / password changes apply without restarting the agent.
+- Commands must never call `keychain.LoadMasterKey` directly; use `unlockMasterKey(reason)` in `cmd/fssh/unlock.go` (it also migrates the master key copy old versions stored in the Keychain in OTP mode).
 
-See `internal/crypt/crypt.go` for crypto primitives and `internal/store/store.go` for key storage.
+### Prompts (`internal/prompt`)
 
-### SSH Agent Implementation
+`Prompter` = `Password`, `Text`, `Notify`. `TTY` for commands; `GUI` (osascript dialogs/notifications, text passed as script arguments — never interpolate into AppleScript) for the agent, whose terminal is not where the user is.
 
-**Two Operating Modes**:
+### OTP (`internal/otp`)
 
-1. **Secure Mode** (`require_touch_id_per_sign: true`):
-   - Implemented in `internal/agent/secure_agent.go`
-   - Decrypts keys on-demand per SSH signature
-   - Optional TTL cache for master key unlock
-   - Every signature triggers `AuthProvider.UnlockMasterKey()`
+- Seed (20 bytes) encrypted with PBKDF2-SHA256 (100k iterations) + AES-256-GCM. Master key = HKDF-SHA256(seed, master_key_salt, "fssh-master-key-v1") — `otp.MasterKey`.
+- Secret shown as Base32 + `otpauth://` URI (`seed.go`).
+- Recovery codes: each code encrypts its own copy of the seed (`recovery_wrapped`); `recovery_codes_hash` only locates the copy. Configs with hashes but no wrapped copies are legacy (`LegacyRecovery`).
+- `NewConfig` builds a config in memory; callers verify a code before `SaveConfig`.
 
-2. **Convenience Mode** (`require_touch_id_per_sign: false`):
-   - Uses standard `golang.org/x/crypto/ssh/agent.Keyring`
-   - Decrypts all keys once at agent startup
-   - Keys kept in memory until agent stops
+### Storage (`internal/store`)
 
-The agent implements the SSH agent protocol via `golang.org/x/crypto/ssh/agent.Agent` interface, supporting:
-- RSA-SHA2-256/512 signatures (via `SignWithFlags`)
-- Public key listing
-- Agent extensions
+- `~/.fssh/keys/<alias>.enc`: JSON, PKCS#8 DER encrypted with AES-256-GCM under HKDF(master, per-file salt, alias), fingerprint as AAD.
+- `~/.fssh/pubkeys/<alias>.pub`: authorized_keys line, written on save, backfilled by `SyncPubKeys`; used by `fssh bind` (IdentityFile + IdentitiesOnly).
+- `ReencryptAll(oldKeys, newKey, commit)`: stage in `keys.new`, verify, run `commit` (persist the new master key), then swap directories. Used by rekey, mode switch and the OTP Keychain migration. Any failure before commit leaves everything untouched.
+- `ValidateAlias` for new aliases; `RecordPath`/`checkAliasPath` block path traversal for existing ones.
+- `backup.go`: scrypt + AES-256-GCM backup of all decrypted records (`fssh backup/restore`).
+- `ExportOpenSSH`; encrypted PKCS#8 export is intentionally unsupported.
 
-### Interactive Shell
+### SSH Agent (`internal/agent`)
 
-`cmd/fssh/shell.go` provides an interactive prompt powered by `github.com/peterh/liner`:
-- Parses `~/.ssh/config` via `internal/sshconfig/sshconfig.go`
-- Tab completion for host names, IPs, and numeric IDs
-- Commands: `list`, `search <term>`, `connect <host>`, `help`, `exit`
-- Non-command input defaults to SSH connection
+- `server.go`: one provider shared by pre-unlock and signing; per-connection `connAgent` via `secureAgent.forConn`.
+- `peer.go`: requesting process via `LOCAL_PEERPID` + `kern.procargs2`.
+- `sessionbind.go`: `session-bind@openssh.com` (verified host-key signature) gives the destination host (looked up in known_hosts) and the forwarding flag.
+- Forwarded requests always use `NoCache`; `forwarded_sign: deny` refuses them.
+- Every signature is appended to `~/.fssh/audit.log` (`internal/audit`, shown by `fssh log`).
+- `ssh-add -x/-X` lock/unlock; `-D` clears the unlock cache (keys stay in the store); Add/Remove are refused.
+- Convenience mode (`require_touch_id_per_sign: false`) uses `agent.NewKeyring` with all keys decrypted at start.
 
-### Configuration Management
+### ssh config (`internal/sshconfig`)
 
-**User Configuration** (`~/.fssh/config.json`):
-```json
-{
-  "socket": "~/.fssh/agent.sock",
-  "require_touch_id_per_sign": true,
-  "unlock_ttl_seconds": 600,
-  "log_level": "info",
-  "log_format": "plain"
-}
-```
+- `LoadHostInfos` follows `Include` (relative to `~/.ssh`, `~`, globs, loop-safe), merges aliases on one `Host` line, treats `Match` as a block boundary.
+- Writers only edit `~/.ssh/config`, never included files (`ErrDefinedElsewhere`).
+- `WriteHostConfig` keeps the original Host line and every directive HostConfig does not model (`mergePreserved`).
+- `SetIdentity` / `ClearIdentity` / `RemoveFsshSettings` edit identity lines only.
+- fssh's global block is wrapped in `# >>> fssh managed >>>` / `# <<< fssh managed <<<` (`EnsureAgentBlock`, `RemoveAgentBlock`; legacy `# fssh agent configuration` blocks are recognised). `AgentCoverage` tells global vs per-host use.
+- Each write backs up to `config.bak.<unix>`, keeping the newest 5.
 
-Loaded by `internal/config/config.go`, used as defaults for CLI flags.
+### CLI (`cmd/fssh`)
 
-**Auto-start**: `contrib/com.fssh.agent.plist` for macOS LaunchAgent.
+| File | Contents |
+|---|---|
+| `main.go` | dispatch, help/version, init entry, import/export/remove/agent/rekey |
+| `setup*.go` | `fssh init` wizard (steps come from one list) |
+| `mode.go` | init per mode, `fssh mode switch`, start over (`resetStore`) |
+| `keys_cmd.go` | list, pubkey, keygen, bind/unbind, original key file handling |
+| `keyimport.go` | passphrase prompting/retry, friendly key errors |
+| `backup_cmd.go`, `uninstall.go`, `shellenv.go`, `doctor.go` (status + doctor), `log_cmd.go`, `otp_cmd.go` | one feature each |
+| `shell.go`, `shell_commands.go` | interactive shell |
+| `table.go` | display-width aware tables (CJK) |
 
-## Key Code Locations
+Adding a command: add it to `commandNames` and the `main()` switch, add `cmd.<name>` to the messages (a test enforces it).
 
-### Authentication
-- `internal/auth/auth.go` - `AuthProvider` interface and mode selection
-- `internal/auth/touchid.go` - Touch ID implementation
-- `internal/auth/otp.go` - OTP implementation
-- `internal/otp/totp.go` - TOTP generation/verification
-- `internal/otp/config.go` - OTP seed encryption/storage
-- `internal/otp/recovery.go` - Recovery code generation/validation
+### i18n (`internal/i18n`)
 
-### Cryptography
-- `internal/crypt/crypt.go` - HKDF, AES-GCM encryption/decryption
-- `internal/store/store.go` - Private key record storage and retrieval
-- `internal/keychain/keychain.go` - macOS Keychain integration
+All user-facing text is bilingual: `i18n.T("key", args...)`, messages in `messages.go`. `TestMessagesComplete` requires both languages with the same format verbs in the same order. Language: `FSSH_LANG` > config `language` > `LC_ALL`/`LC_MESSAGES`/`LANG` > macOS `AppleLanguages`. Pass already-formatted text to `errors.New`, not `fmt.Errorf`. Log messages and low-level technical errors stay English/Chinese as written.
 
-### SSH Agent
-- `internal/agent/server.go` - Agent server startup and mode dispatch
-- `internal/agent/secure_agent.go` - On-demand decryption agent
+## File Storage
 
-### CLI Commands
-- `cmd/fssh/main.go` - Command dispatch and flag parsing
-- `cmd/fssh/shell.go` - Interactive shell
-- `cmd/fssh/otp_init.go` - OTP initialization logic
-- `cmd/fssh/config_gen.go` - SSH config generator
-- `cmd/fssh/align.go` - sshd configuration alignment
-
-### Utilities
-- `internal/sshconfig/sshconfig.go` - `~/.ssh/config` parser
-- `internal/log/log.go` - Structured logging
-- `internal/macos/touchid_darwin.go` - macOS biometry CGo bindings
-
-## Important Implementation Details
-
-### Private Key Format
-- All keys converted to **PKCS#8 DER** internally
-- Supports RSA, ECDSA, Ed25519
-- Import: Handles encrypted/unencrypted PEM via `ssh.ParseRawPrivateKey()`
-- Export: PKCS#8 PEM with optional AES-256 encryption
-
-### File Storage Structure
 ```
 ~/.fssh/
-├── agent.sock                # SSH agent socket
-├── config.json               # User configuration
-├── auth_mode.json            # Authentication mode (touchid/otp)
-├── keys/                     # Encrypted private keys
-│   ├── mykey.enc             # Per-key encrypted file
-│   └── server.enc
-└── otp/                      # OTP mode only
-    ├── config.enc            # Encrypted OTP seed + config
-    └── recovery_codes.enc    # Encrypted recovery codes
+├── config.json        # user config
+├── auth_mode.json     # touchid | otp (0600)
+├── keys/*.enc         # encrypted private keys
+├── pubkeys/*.pub      # public keys for IdentityFile
+├── audit.log          # signature requests (JSON lines, 0600)
+├── agent.sock
+└── otp/
+    ├── config.enc     # encrypted seed, recovery copies, TOTP settings
+    └── last_counter   # last accepted TOTP step (replay guard)
+~/Library/LaunchAgents/com.fssh.agent.plist   # logs to ~/Library/Logs/fssh/agent.log
 ```
 
-### OTP Mode Security
-- Password must be ≥12 characters
-- TOTP uses standard algorithms (SHA1/SHA256/SHA512), 6 or 8 digits
-- OTP seed encrypted with password-derived key (scrypt or similar)
-- Seed cached in memory with configurable TTL
-- Master key cached per signature with separate TTL
-- 10 single-use recovery codes for password reset
+## Distribution
 
-### TTL Behavior
-- **OTP Mode**: Two-tier caching
-  - `seed-unlock-ttl`: How long OTP seed stays in memory (password entry frequency)
-  - `unlock-ttl-seconds`: How long master key stays cached (TOTP entry frequency)
-- **Touch ID Mode**: Single-tier caching
-  - `unlock-ttl-seconds`: How long Touch ID unlock is cached
-
-### RSA-SHA2 Support
-The agent advertises RSA-SHA2-256/512 support via:
-- `SignWithFlags()` implementation in `secure_agent.go`
-- `Extension("ext-info-c")` returning signature flags bitmask
-- Uses `ssh.AlgorithmSigner` interface for algorithm selection
-
-## Common Development Patterns
-
-### Adding a New Command
-1. Add case to `cmd/fssh/main.go:main()` switch
-2. Implement `cmdYourCommand()` function in `main.go` or separate file
-3. Parse flags with `flag.NewFlagSet()`
-4. Call appropriate internal packages
-
-### Modifying Authentication Flow
-- Both Touch ID and OTP implement `AuthProvider` interface
-- `UnlockMasterKey()` is the primary entry point
-- Cache management happens inside provider implementations
-- Test mode switching by modifying `~/.fssh/auth_mode.json`
-
-### Working with Encrypted Keys
-```go
-// Load and decrypt
-mk, _ := keychain.LoadMasterKey()              // or provider.UnlockMasterKey()
-rec, _ := store.LoadDecryptedRecord(alias, mk)
-// rec.PKCS8DER contains raw private key
-
-// Parse and use
-priv, _ := x509.ParsePKCS8PrivateKey(rec.PKCS8DER)
-signer, _ := ssh.NewSignerFromKey(priv)
-```
-
-### Logging
-Use structured logging via `internal/log/log.go`:
-```go
-log.Info("message", map[string]interface{}{"key": "value"})
-log.Debug("detail", fields)
-log.Warn("warning", fields)
-log.Error("error", fields)
-```
-
-## Testing the Agent
-
-```bash
-# Terminal 1: Start agent
-./fssh agent --unlock-ttl-seconds 600
-
-# Terminal 2: Set socket and test
-export SSH_AUTH_SOCK=~/.fssh/agent.sock
-ssh-add -l  # List keys from agent
-ssh user@host  # Test actual connection
-```
+- CI (`.github/workflows/build.yml`) runs on macOS with CGO, tests with `-race`, builds a universal binary; tags `v*` create a release.
+- `contrib/install.sh` installs a release (sha256 check, removes quarantine); `contrib/homebrew/fssh.rb` is the tap formula (builds from source).
+- Binaries are not Apple-signed (decision recorded in `docs/fix-plan.md`); Keychain may ask again after upgrades.
 
 ## Security Considerations
 
-- Never log master keys, seeds, passwords, or recovery codes
-- Always use `0600` permissions for encrypted files
-- Touch ID prompts use macOS LAContext with biometry policy
-- OTP mode should recommend FileVault full-disk encryption
-- Convenience mode keeps keys in memory - document security tradeoff
-- Recovery codes are single-use and should be marked as used after consumption
-
-## Documentation
-
-- `README.md` - English user guide
-- `README_CN.md` - Chinese user guide
-- `docs/OTP-QUICKSTART.md` - OTP mode quick start
-- `docs/otp-authentication.md` - OTP design document
-- `docs/otp-sdd.md` - OTP software design document
-- `docs/otp-implementation.md` - OTP implementation details
+- Never log master keys, seeds, passwords, recovery codes or decrypted keys.
+- Files under `~/.fssh` are 0600, directories 0700.
+- OTP's second factor is a local check: password + `~/.fssh` suffice to derive the master key. Document, do not overstate.
+- Re-encryption must go through `store.ReencryptAll` so failures never strand keys.

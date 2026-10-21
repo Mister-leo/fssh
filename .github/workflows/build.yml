@@ -100,14 +100,24 @@ jobs:
           通用二进制，同时支持 Apple Silicon 和 Intel Mac。
           Universal binary for both Apple Silicon and Intel Macs.
 
+          **一键安装（校验 sha256 并解除隔离）/ Install script (verifies sha256, removes quarantine):**
           ```bash
-          tar -xzf fssh-macos-universal.tar.gz
-          # 该二进制未经 Apple 签名，需解除下载隔离，否则会被 Gatekeeper 拦截
-          # The binary is not signed by Apple; remove the quarantine flag or Gatekeeper will block it
-          xattr -d com.apple.quarantine fssh
-          sudo mv fssh /usr/local/bin/
-          fssh version
+          curl -fsSL https://raw.githubusercontent.com/Mister-leo/fssh/main/contrib/install.sh | sh
           ```
 
-          升级后首次访问 Keychain 时，macOS 可能再次弹出授权框，点击「始终允许」即可。
+          **Homebrew（从源码编译）/ Homebrew (builds from source):**
+          ```bash
+          brew tap Mister-leo/fssh && brew install fssh
+          ```
+
+          **手动安装 / Manual:**
+          ```bash
+          tar -xzf fssh-macos-universal.tar.gz
+          # 该二进制未经 Apple 签名，需解除下载隔离 / not signed by Apple: remove the quarantine flag
+          xattr -d com.apple.quarantine fssh
+          sudo mv fssh /usr/local/bin/
+          fssh init
+          ```
+
+          升级后首次访问 Keychain 时，macOS 可能再次询问授权，点击「始终允许」即可。
           After upgrading, macOS may ask again for Keychain access; click "Always Allow".

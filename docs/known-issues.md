@@ -45,11 +45,11 @@
   - 现象：不提示删除/归档原文件，也不引导 `IdentitiesOnly`；ssh 可能直接读取明文 `id_*` 绕过 fssh
   - 位置：`cmd/fssh/setup_keys.go`
 
-- [ ] **P1-2 向导“重新初始化”无效；`--force` 后旧密钥成孤儿**
+- [x] **P1-2 向导“重新初始化”无效；`--force` 后旧密钥成孤儿**
   - 现象：确认重新初始化后 `force` 未传递，`initTouchIDMode` 打印 "master key already exists" 直接返回；使用 `--force` 时旧 `.enc` 文件无法解密且无提示
   - 位置：`cmd/fssh/setup.go:114`、`cmd/fssh/otp_init.go`
 
-- [ ] **P1-3 Touch ID 可用性检测是假的**
+- [x] **P1-3 Touch ID 可用性检测是假的**
   - 现象：只判断 `runtime.GOOS == "darwin"`，Mac mini 也显示 “✓ Your Mac supports Touch ID!” 并默认选 Touch ID
   - 位置：`cmd/fssh/setup.go:128`
 
@@ -57,11 +57,11 @@
   - 现象：`ssh-add -x`（Lock）、`ssh-add -D`（RemoveAll）返回成功但无效果；`ssh-add` 添加密钥不支持
   - 位置：`internal/agent/secure_agent.go:227-232`
 
-- [ ] **P1-5 备份/换机路径缺失**
+- [x] **P1-5 备份/换机路径缺失**
   - 现象：导出使用已废弃的 `x509.EncryptPEMBlock`（RFC1423 旧式加密），兼容性存疑；无整库备份/迁移
   - 位置：`internal/store/store.go:170`
 
-- [ ] **P1-6 向导引导矛盾**
+- [x] **P1-6 向导引导矛盾**
   - 现象：已写入 `IdentityAgent` 仍以 “⚠️ IMPORTANT” 要求设置 `SSH_AUTH_SOCK`；欢迎页列 6 步，实际 Step x/8
   - 位置：`cmd/fssh/setup.go`
 
@@ -74,7 +74,8 @@
   - 现象：不显示认证模式、Agent 是否运行、密钥数量、TTL
   - 位置：`cmd/fssh/main.go`（`cmdStatus`）
 
-- [ ] **P1-9 细节问题**
+- [x] **P1-9 细节问题**
+  - 第四阶段完成全面中英双语迁移（向导、Shell、错误信息）；日志与底层技术错误保持原文
   - 进展（2026-10-21）：验证码位数提示、`switch-to-otp` 引用、日志与 `auth_mode.json` 权限已修复；`internal/i18n` 已建好，全面迁移文案待做
   - 中英文混杂（向导英文，错误多为中文）
   - 8 位验证码仍提示“请输入6位验证码”（`internal/auth/otp.go:145`）
@@ -87,14 +88,17 @@
   - 现象：`CGO_ENABLED=0` 时 `internal/macos` 被构建约束全部排除，构建报错；Release 无可用二进制（已本地复现）
   - 位置：`.github/workflows/build.yml:44`（且 runner 为 ubuntu，需改为 macOS + CGo）
 
-- [ ] **P2-2 无 Homebrew、无签名/公证；二进制提交进仓库**
+- [x] **P2-2 无 Homebrew、无签名/公证；二进制提交进仓库**
+  - 处理：二进制移出仓库；`contrib/install.sh` 安装脚本；`contrib/homebrew/fssh.rb` 配方
+  - **待手动完成**：在 GitHub 创建 `Mister-leo/homebrew-fssh` 仓库放入配方；打 `v*` tag 发布后把配方的 `url`/`sha256` 改为该版本
   - 未签名会被 Gatekeeper 拦截；Keychain ACL 绑定签名，升级后可能重复弹授权（待实测）
   - 仓库中提交了 7.8MB 的 `fssh` 二进制
 
-- [ ] **P2-3 无任何测试**
+- [x] **P2-3 无任何测试**
+  - 处理：除 `keychain`、`macos`（需真机交互）外各包均有测试，CI 以 `-race` 运行；Keychain 测试为可选（`FSSH_KEYCHAIN_TESTS=1`）
   - crypt、TOTP、ssh config 写入等高风险模块无回归保障
 
-- [ ] **P2-4 文档与实现不一致**
+- [x] **P2-4 文档与实现不一致**
   - 第三阶段新增内容需写入 README：`keygen`、`pubkey`、`bind`/`unbind`、`doctor`、`list --json`、`import --original`、Shell `connect` 透传与 `list -r`
   - 第二阶段新增内容需写入 README：`fssh otp` 子命令、`fssh log`、`forwarded_sign` 配置、`ssh-add -x/-X/-D` 行为、开发用环境变量 `FSSH_KEYCHAIN_SERVICE`
   - CLAUDE.md 称 OTP 用 scrypt，代码为 PBKDF2
@@ -143,7 +147,7 @@
   - 实测（2026-10-21）：Agent 锁定后 `ssh-keygen -Y sign` 立即回退到 `~/.ssh` 中的明文私钥并提示输入其密码
   - 取消指纹或 Agent 未运行时，ssh 只显示 `agent refused operation` / `Permission denied (publickey)`，没有任何指向 fssh 的提示；若 `~/.ssh` 还有明文 key，会静默回退使用它
 
-- [ ] **U-11 无卸载/停用路径**
+- [x] **U-11 无卸载/停用路径**
   - 向导改动了 `/usr/local/bin`、LaunchAgent、`~/.ssh/config`、Keychain，没有 `fssh uninstall`；只删二进制会导致 LaunchAgent 反复拉起失败
 
 - [x] **U-12 `remove` 先要求认证再检查是否存在**
@@ -157,19 +161,21 @@
   - 修复：改为 Base32，并输出 `otpauth://` 链接（装有 qrencode 时显示二维码）；旧用户用 `fssh otp show-secret` 重新添加
   - 位置：`internal/otp/init.go`、`internal/otp/seed.go`
 
-- [ ] **P1-10 OTP 的第二因素只是本地检查（设计限制）**
+- [x] **P1-10 OTP 的第二因素只是本地检查（设计限制）**
+  - 处理：无法在本地方案中根本解决，已在 README「安全边界」中如实说明（2026-10-21）
   - seed 只由密码加密，拿到密码和 `config.enc` 即可推出 master key；TOTP 验证码不提供密码学保护，只能防止“只知道密码、拿不到这台电脑上的配置文件”的情况
   - 本地方案无法根本解决，需要在 README 中如实说明 OTP 模式的安全边界
 
-- [ ] **P1-11 TOTP 验证码可在有效窗口内重复使用**
+- [x] **P1-11 TOTP 验证码可在有效窗口内重复使用**
   - `otp.Verify` 允许 ±1 个时间窗口且不记录已用验证码，同一验证码约 90 秒内可重放
   - 位置：`internal/otp/totp.go`
 
-- [ ] **P1-12 socket 路径过长时报错难懂**
+- [x] **P1-12 socket 路径过长时报错难懂**
   - 路径超过 104 字节时只显示 `bind: invalid argument`
   - 位置：`internal/agent/server.go`
 
-- [ ] **P1-13 `ssh-add -D` 的提示与实际行为不一致**
+- [x] **P1-13 `ssh-add -D` 的提示与实际行为不一致**
+  - 处理：已在 README「Agent 行为」中说明（2026-10-21）
   - 显示 “All identities removed”，但 `ssh-add -l` 仍列出密钥（fssh 将其实现为清除解锁缓存，密钥保存在加密存储中）；需在文档中说明
 
 ## 第三阶段新发现（2026-10-21）
@@ -189,6 +195,6 @@
 - [x] **P1-17 Shell 中新增的主机无法 Tab 补全**
   - 修复：补全函数在补全时读取当前状态，而不是启动时的快照
 
-- [ ] **P1-18 每次修改 ssh 配置都会生成一个 `config.bak.<时间戳>`**
+- [x] **P1-18 每次修改 ssh 配置都会生成一个 `config.bak.<时间戳>`**
   - `bind`、Shell 编辑等每次写入都备份一次，`~/.ssh` 下备份文件会持续累积；应只保留最近几份
   - 位置：`internal/sshconfig/writer.go` `backupSSHConfig`

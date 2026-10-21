@@ -2,7 +2,9 @@ package otp
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"fssh/internal/i18n"
 	"os"
 	"path/filepath"
 )
@@ -48,22 +50,22 @@ func ConfigPath() string {
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("读取配置文件失败: %w", err)
+		return nil, fmt.Errorf(i18n.T("otpcfg.read"), err)
 	}
 
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("解析配置文件失败: %w", err)
+		return nil, fmt.Errorf(i18n.T("otpcfg.parse"), err)
 	}
 
 	// 验证配置版本
 	if cfg.Version != "fssh-otp/v1" {
-		return nil, fmt.Errorf("不支持的配置版本: %s", cfg.Version)
+		return nil, fmt.Errorf(i18n.T("otpcfg.version"), cfg.Version)
 	}
 
 	// 验证必要字段
 	if cfg.EncryptedSeed == "" || cfg.SeedSalt == "" || cfg.SeedNonce == "" {
-		return nil, fmt.Errorf("配置文件损坏：缺少必要字段")
+		return nil, errors.New(i18n.T("otpcfg.incomplete"))
 	}
 
 	return &cfg, nil
@@ -76,18 +78,18 @@ func SaveConfig(cfg *Config) error {
 	// 确保目录存在
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("创建配置目录失败: %w", err)
+		return fmt.Errorf("create OTP config directory: %w", err)
 	}
 
 	// 序列化配置
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return fmt.Errorf("序列化配置失败: %w", err)
+		return fmt.Errorf("encode OTP config: %w", err)
 	}
 
 	// 写入文件，权限 0600（仅当前用户可读写）
 	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("写入配置文件失败: %w", err)
+		return fmt.Errorf(i18n.T("otpcfg.write"), err)
 	}
 
 	return nil

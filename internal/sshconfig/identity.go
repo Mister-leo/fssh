@@ -290,3 +290,80 @@ func HostsUsingIdentityFile(path string) ([]string, error) {
 	}
 	return hosts, nil
 }
+
+// RemoveFsshSettings strips fssh from every Host block in ~/.ssh/config:
+// IdentityFile lines inside pubDir, IdentityAgent lines pointing at
+// agentSock, and IdentitiesOnly when no IdentityFile remains. Blocks left
+// empty (created by fssh bind) are removed. Returns the affected hosts.
+func RemoveFsshSettings(pubDir, agentSock string) ([]string, error) {
+	lines, err := readSSHConfigLines()
+	if err != nil {
+		return nil, err
+	}
+	var out, hosts []string
+	changed := false
+	flush := func(block []string) {
+		if len(block) == 0 {
+			return
+		}
+		head := block[0]
+		var body []string
+		removed, otherFiles := false, false
+		for _, line := range block[1:] {
+			k, v := parseKV(line)
+			switch {
+			case k == "identityfile" && isUnder(expandHomePath(v), pubDir):
+				removed = true
+				continue
+			case k == "identityagent" && expandHomePath(v) == agentSock:
+				removed = true
+				continue
+			case k == "identityfile":
+				otherFiles = true
+			}
+			body = append(body, line)
+		}
+		if !removed {
+			out = append(out, block...)
+			return
+		}
+		changed = true
+		if k, v := parseKV(head); k == "host" {
+			hosts = append(hosts, v)
+		}
+		if !otherFiles {
+			kept := body[:0]
+			for _, line := range body {
+				if k, _ := parseKV(line); k != "identitiesonly" {
+					kept = append(kept, line)
+				}
+			}
+			body = kept
+		}
+		empty := true
+		for _, line := range body {
+			if t := strings.TrimSpace(line); t != "" && !strings.HasPrefix(t, "#") {
+				empty = false
+			}
+		}
+		if k, _ := parseKV(head); empty && k == "host" {
+			return // a block that only held fssh settings
+		}
+		out = append(out, head)
+		out = append(out, body...)
+	}
+
+	var block []string
+	for _, line := range lines {
+		if k, _ := parseKV(line); k == "host" || k == "match" {
+			flush(block)
+			block = nil
+		}
+		block = append(block, line)
+	}
+	flush(block)
+	if !changed {
+		return nil, nil
+	}
+	return hosts, writeWithBackup(cleanupBlankLines(out))
+}

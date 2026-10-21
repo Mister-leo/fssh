@@ -290,3 +290,75 @@ func TestKeyDescription(t *testing.T) {
 		}
 	}
 }
+
+func TestBackupRoundTrip(t *testing.T) {
+	setupHome(t)
+	a := saveTestKey(t, "a", masterKey())
+	saveTestKey(t, "b", masterKey())
+	path := filepath.Join(t.TempDir(), "x.fsshbak")
+
+	n, err := WriteBackup(path, masterKey(), "backup passphrase")
+	if err != nil || n != 2 {
+		t.Fatalf("WriteBackup = %d, %v", n, err)
+	}
+	if fi, _ := os.Stat(path); fi.Mode().Perm() != 0600 {
+		t.Fatalf("backup mode = %v", fi.Mode().Perm())
+	}
+	if _, err := WriteBackup(path, masterKey(), "backup passphrase"); err == nil {
+		t.Fatal("existing backup file overwritten")
+	}
+	if _, err := ReadBackup(path, "wrong passphrase!"); !errors.Is(err, ErrBackupPassphrase) {
+		t.Fatalf("wrong passphrase: %v", err)
+	}
+	recs, err := ReadBackup(path, "backup passphrase")
+	if err != nil || len(recs) != 2 {
+		t.Fatalf("ReadBackup = %d, %v", len(recs), err)
+	}
+	var got *Record
+	for _, r := range recs {
+		if r.Alias == "a" {
+			got = r
+		}
+	}
+	metaA, _ := LoadMeta("a")
+	if got == nil || !bytes.Equal(got.PKCS8DER, a.PKCS8DER) || got.CreatedAt != metaA.CreatedAt {
+		t.Fatal("restored record differs")
+	}
+
+	// restore under a different master key (another Mac / auth mode)
+	setupHome(t)
+	other := bytes.Repeat([]byte{4}, 32)
+	if err := SaveEncryptedRecord(got, other); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadDecryptedRecord("a", other); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExportOpenSSH(t *testing.T) {
+	setupHome(t)
+	rec := saveTestKey(t, "a", masterKey())
+	plain, err := ExportOpenSSH(rec, "")
+	if err != nil || !bytes.Contains(plain, []byte("BEGIN OPENSSH PRIVATE KEY")) {
+		t.Fatalf("plain export: %v\n%s", err, plain)
+	}
+	if _, err := ssh.ParseRawPrivateKey(plain); err != nil {
+		t.Fatalf("ssh cannot parse export: %v", err)
+	}
+	enc, err := ExportOpenSSH(rec, "export pass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ssh.ParseRawPrivateKey(enc); err == nil {
+		t.Fatal("encrypted export parsed without passphrase")
+	}
+	k, err := ssh.ParseRawPrivateKeyWithPassphrase(enc, []byte("export pass"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _ := ssh.NewSignerFromKey(k)
+	if ssh.FingerprintSHA256(s.PublicKey()) != rec.Fingerprint {
+		t.Fatal("exported key differs")
+	}
+}

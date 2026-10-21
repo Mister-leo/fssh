@@ -1,427 +1,252 @@
-# fssh - 让 SSH 登录更简单安全
+# fssh - 用 Touch ID 或 OTP 解锁的 macOS SSH 密钥管理器
 
-![Touch ID Fingerprint](images/finger.png)
-
-## 这是什么？
-
-fssh 是一个 macOS 专用的 SSH 密钥管理工具，解决两个痛点：
-
-1. **每次 SSH 登录都要输入私钥密码** → fssh 让你用指纹（Touch ID）或一次性验证码（OTP）解锁
-2. **记不住 `~/.ssh/config` 里配置的服务器别名** → fssh 提供交互式界面，Tab 补全，快速连接
-
-## 工作原理
-
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  SSH 客户端  │ ──▶ │  fssh Agent │ ──▶ │  远程服务器  │
-└─────────────┘     └─────────────┘     └─────────────┘
-                          │
-                    Touch ID 或 OTP
-                    解锁加密的私钥
-```
-
-你的 SSH 私钥被加密存储，只有通过 Touch ID 指纹或 OTP 验证后才能解密使用。
-
-## 功能截图
-
-**SSH 登录时弹出指纹验证：**
+[English](README.md)
 
 ![Touch ID 验证](images/finger.png)
 
-**交互式 Shell 查看和连接服务器：**
+## 这是什么？
+
+fssh 把 SSH 私钥加密保存，并作为你的 SSH Agent 工作。不再需要明文私钥文件或反复输入私钥密码：每次签名用 Touch ID（或 macOS 登录密码）解锁，或者用「密码 + 验证器验证码」解锁（OTP 模式）。
+
+- **磁盘上不留明文私钥**：私钥用 AES-256-GCM 加密；`fssh keygen` 生成的新密钥从不以明文落盘
+- **知道是谁在请求**：解锁弹窗写明哪个程序、要用哪把密钥、登录哪台服务器；通过 `ssh -A` 转发来的请求会醒目提示
+- **每台主机用对的密钥**：`fssh bind github.com work` 让主机只使用指定密钥
+- **交互式 Shell**：浏览、搜索、连接 `~/.ssh/config` 中的主机，支持 Tab 补全
+- **自查**：`fssh doctor` 找出配置问题并给出修复命令
+
+```
+┌─────────────┐     ┌──────────────────────┐     ┌──────────────┐
+│ ssh / git   │ ──▶ │ fssh agent           │ ──▶ │   远程服务器   │
+└─────────────┘     │ Touch ID / OTP 验证  │     └──────────────┘
+                    │ 解密一把私钥并签名   │
+                    └──────────────────────┘
+```
+
+**交互式 Shell：**
 
 ![交互式 Shell](images/shell.png)
 
 ---
 
+## 安装
+
+支持 Apple Silicon 和 Intel 的 macOS。
+
+**Homebrew**（从源码编译）：
+
+```bash
+brew tap Mister-leo/fssh
+brew install fssh
+```
+
+**安装脚本**（下载 Release 二进制，校验 sha256 并解除下载隔离）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Mister-leo/fssh/main/contrib/install.sh | sh
+```
+
+**从源码编译**（Go 1.21+，需要 Xcode 命令行工具）：
+
+```bash
+go build -o fssh ./cmd/fssh
+sudo install -m 755 fssh /usr/local/bin/fssh
+```
+
+Release 二进制没有 Apple 签名。Homebrew 和安装脚本不会被 Gatekeeper 拦截；手动下载时请先执行 `xattr -d com.apple.quarantine fssh`。
+
 ## 快速开始
 
-### 方式一：交互式设置向导（推荐）
+```bash
+fssh init      # 设置向导
+fssh doctor    # 检查是否全部接好
+ssh my-server  # 会弹出 Touch ID / OTP 验证
+```
 
-最简单的开始方式 - 一条命令搞定所有配置：
+向导依次完成：
+
+1. **认证方式**：Touch ID（推荐；没有可用传感器的 Mac 会改为询问 macOS 登录密码）或 OTP
+2. **安装** fssh 到 `/usr/local/bin`（Homebrew 安装时跳过）
+3. **导入密钥**：从 `~/.ssh` 导入，并把明文原文件归档到 `~/.ssh/fssh-archive/`（也可删除或保留）
+4. **开机自启**：配置 LaunchAgent
+5. **启动** agent
+6. **配置 ssh**：在 `~/.ssh/config` 开头加入一个带标记的配置块，让所有主机使用 fssh agent
+7. **Shell 环境变量**（可选）：设置 `SSH_AUTH_SOCK`，供 `ssh-add` 和不读取 `~/.ssh/config` 的工具使用
+
+再次运行 `fssh init` 时，可以选择保留当前配置、切换认证模式（保留所有密钥）或全部重来。
+
+## 日常使用
+
+### 解锁
+
+照常使用 `ssh`、`git`、`scp`。验证一次后，agent 会在 `unlock_ttl_seconds`（默认 600 秒）内复用这次解锁，所以连续连接或用 Ansible 连 50 台机器也只需验证一次。设为 `0` 表示每次签名都验证。
+
+弹窗会说明是谁在请求，例如「git → ssh 请求使用密钥 work 登录 github.com」。通过 `ssh -A` 转发来的请求会醒目标注，并且**每次都要确认**，不使用缓存；配置 `"forwarded_sign": "deny"` 可以直接拒绝。用 `fssh log` 查看最近的签名请求。
+
+### 多把密钥
+
+不绑定时，ssh 会把 agent 中所有密钥逐一提供给每台服务器：可能用错 GitHub 账号推送，密钥多于 6 把左右时服务器还会直接拒绝（`Too many authentication failures`）。把主机绑定到密钥：
 
 ```bash
-# 编译项目
-go build ./cmd/fssh
-
-# 运行交互式设置向导
-./fssh init
+fssh bind github.com work        # 写入 IdentityFile ~/.fssh/pubkeys/work.pub 和 IdentitiesOnly yes
+fssh bind gitlab.com personal
+fssh list                        # 查看每把密钥绑定了哪些主机
+fssh unbind gitlab.com
 ```
 
-向导会引导你完成：
-1. **选择认证模式** - Touch ID 或 OTP
-2. **安装二进制文件** - 自动复制 fssh 到 /usr/local/bin
-3. **导入 SSH 密钥** - 扫描并导入 ~/.ssh/ 下的密钥
-4. **配置开机自启** - 设置 LaunchAgent 自动启动
-5. **启动 agent** - 立即启动 fssh agent
-6. **配置 SSH 客户端** - 自动更新 ~/.ssh/config
-
-**完成后的重要步骤：设置环境变量**
-
-向导完成后会显示需要设置的环境变量。将以下内容添加到你的 shell 配置文件：
+### 新建密钥
 
 ```bash
-export SSH_AUTH_SOCK=~/.fssh/agent.sock
+fssh keygen deploy                  # 默认 ed25519；可选 --type ecdsa|rsa、--bits 4096
+fssh pubkey deploy --copy           # 公钥复制到剪贴板
 ```
 
-配置文件位置：
-- **bash**: `~/.bashrc` 或 `~/.bash_profile`
-- **zsh**: `~/.zshrc`
-- **fish**: `~/.config/fish/config.fish`
+### 交互式 Shell
 
-然后重新加载配置：
-```bash
-source ~/.zshrc  # 或你的 shell 配置文件
-```
-
-或使用自动设置脚本：
-```bash
-./contrib/setup-env.sh
-```
-
-设置完成后，你就可以直接使用 SSH 并通过 Touch ID/OTP 认证了！
-
-### 方式二：手动设置（进阶）
-
-适合希望逐步控制每个环节的用户：
-
-#### 第一步：安装
-
-```bash
-# 下载源码后，编译
-go build ./cmd/fssh
-
-# 安装到系统目录（需要管理员权限）
-sudo cp fssh /usr/local/bin/
-```
-
-#### 第二步：初始化
-
-根据你的设备选择认证模式：
-
-**如果你的 Mac 有 Touch ID（MacBook Pro/Air 2016年后、iMac 配 Magic Keyboard 等）：**
-
-```bash
-fssh init --mode touchid
-```
-
-**如果你的 Mac 没有 Touch ID（Mac Mini、老款 Mac、虚拟机等）：**
-
-```bash
-fssh init --mode otp
-```
-
-OTP 模式初始化时会：
-1. 让你设置一个密码（至少 12 位）
-2. 显示 TOTP 密钥，需要添加到手机的验证器 App（如 Google Authenticator、Authy）
-3. 显示 10 个恢复码，**请务必保存好**
-
-#### 第三步：导入 SSH 私钥
-
-```bash
-# 导入你的 SSH 私钥（如果私钥有密码，会提示输入）
-fssh import --alias mykey --file ~/.ssh/id_rsa --ask-passphrase
-```
-
-参数说明：
-- `--alias`：给这个密钥起个名字，方便记忆
-- `--file`：私钥文件路径
-- `--ask-passphrase`：如果私钥有密码保护，加上这个参数
-
-#### 第四步：启动 Agent
-
-```bash
-fssh agent
-```
-
-启动后，Agent 会在后台运行，监听 `~/.fssh/agent.sock`。
-
-#### 第五步：配置 SSH 使用 fssh Agent
-
-编辑 `~/.ssh/config` 文件，在**最开头**添加：
+运行 `fssh`（或 `fssh shell`）：
 
 ```
-Host *
-    IdentityAgent ~/.fssh/agent.sock
+fssh> list                       # 所有主机（读取 Include，合并别名）
+fssh> list -r                    # 显示解析出的 IP（代理的 fake-ip 地址会被隐藏）
+fssh> search prod
+fssh> web1                       # 按名称、别名、编号、主机名或 IP 直接连接
+fssh> connect me@10.0.0.9 -p 2222   # 任何 ssh 接受的参数
+fssh> show web1                  # 详情，包括绑定的 fssh 密钥
+fssh> add / edit web1 / delete web1
+fssh> global show                # Host * 配置块
 ```
 
-这样所有 SSH 连接都会通过 fssh Agent。
+`edit` 会保留它不管理的所有选项（LocalForward、SetEnv、注释、额外别名）。`Include` 进来的主机可以查看，但不会被修改。
 
-#### 第六步：开始使用
-
-```bash
-# 正常使用 SSH 命令，会自动弹出 Touch ID 或要求输入 OTP
-ssh user@yourserver.com
-```
-
----
-
-## 交互式设置向导详解
-
-交互式向导（`fssh init`）会执行以下步骤：
-
-### 详细流程
-
-**步骤 1：欢迎和初始化检查**
-- 显示欢迎横幅
-- 检查是否已经初始化过
-- 如果需要重新初始化，会提示确认
-
-**步骤 2：选择认证模式**
-- 自动检测你的 Mac 是否支持 Touch ID
-- 提示选择：
-  - Touch ID（推荐用于支持的设备）
-  - OTP（适用于不支持 Touch ID 的设备或需要额外安全性）
-
-**步骤 3：执行认证初始化**
-- 执行所选认证模式的设置
-- Touch ID 模式：生成主密钥并存储到 macOS 钥匙串
-- OTP 模式：设置密码 + TOTP，生成恢复码
-
-**步骤 4：安装二进制文件**
-- 检测当前可执行文件位置
-- 复制 fssh 到 `/usr/local/bin/`（需要 sudo）
-- 设置正确的权限（755）
-
-**步骤 5：导入 SSH 密钥**
-- 扫描 `~/.ssh/` 目录查找私钥
-- 检测标准密钥文件：`id_rsa`、`id_ed25519`、`id_ecdsa` 等
-- 识别加密和未加密的密钥
-- 逐个提示导入：
-  - 建议的别名（例如 `id_ed25519` → `ed25519`）
-  - 如果密钥加密，提示输入密码
-- 使用加密保护导入密钥
-
-**步骤 6：配置 LaunchAgent**
-- 在 `~/Library/LaunchAgents/com.fssh.agent.plist` 创建 plist 文件
-- 加载 LaunchAgent 实现登录时自动启动
-- 配置 agent 持续运行
-
-**步骤 7：启动 Agent**
-- 等待 agent 启动（最多 10 秒）
-- 验证 `~/.fssh/agent.sock` 的 socket 连接
-
-**步骤 8：配置 SSH 客户端**
-- 提示更新 `~/.ssh/config`
-- 修改前创建备份
-- 在开头添加 `IdentityAgent` 配置以实现 SSH 自动集成
-
-### 非交互模式
-
-适用于自动化、脚本或 CI/CD：
-
-```bash
-# 跳过所有交互式提示
-fssh init --non-interactive --mode touchid
-
-# 或直接指定模式
-fssh init --mode otp
-```
-
----
-
-## 设置开机自启动
-
-每次开机后手动启动 Agent 太麻烦？设置自启动：
-
-```bash
-# 复制启动配置文件
-cp contrib/com.fssh.agent.plist ~/Library/LaunchAgents/
-
-# 加载服务
-launchctl load -w ~/Library/LaunchAgents/com.fssh.agent.plist
-```
-
-**检查服务状态：**
-
-```bash
-launchctl list | grep fssh
-```
-
-正常输出类似：`-    0    com.fssh.agent`（0 表示正在运行）
-
-**如果需要重启服务：**
-
-```bash
-launchctl kickstart -k gui/$(id -u)/com.fssh.agent
-```
-
-**如果需要停止服务：**
-
-```bash
-launchctl unload ~/Library/LaunchAgents/com.fssh.agent.plist
-```
-
----
-
-## 交互式 Shell 使用
-
-直接运行 `fssh` 或 `fssh shell` 进入交互模式：
-
-```bash
-$ fssh
-fssh> list                    # 列出 ~/.ssh/config 中的所有主机
-fssh> search prod             # 搜索包含 "prod" 的主机
-fssh> connect myserver        # 连接到 myserver
-fssh> myserver                # 也可以直接输入主机名连接
-fssh> exit                    # 退出
-```
-
-支持 **Tab 补全**，输入部分主机名后按 Tab 自动补全。
-
----
-
-## 常用命令一览
-
-### 初始化命令
+## 命令一览
 
 | 命令 | 说明 |
-|------|------|
-| `fssh init` | 交互式设置向导（推荐） |
-| `fssh init --interactive` | 显式运行交互式向导 |
-| `fssh init --mode touchid` | 使用 Touch ID 初始化（非交互式） |
-| `fssh init --mode otp` | 使用 OTP 初始化（非交互式） |
-| `fssh init --non-interactive --mode touchid` | 非交互模式，适用于脚本/CI |
+|---|---|
+| `fssh init` | 设置向导（`--mode touchid\|otp` 非交互初始化，`--force` 全部重来） |
+| `fssh import --alias 名 --file 路径` | 导入私钥，按需询问私钥密码；`--original archive\|delete\|keep` 处理原文件 |
+| `fssh keygen 名` | 生成新密钥并直接加密保存 |
+| `fssh list [--json]` | 列出密钥：类型、指纹、绑定的主机 |
+| `fssh pubkey 名 [--copy]` | 输出公钥 |
+| `fssh bind 主机 名` / `fssh unbind 主机` | 让主机只使用指定密钥 |
+| `fssh export --alias 名 --out 文件` | 导出为 OpenSSH 格式（`--ask-passphrase` 加密；`--format pkcs8` 导出未加密 PKCS#8） |
+| `fssh remove --alias 名` | 删除密钥（会确认；脚本中用 `--yes`） |
+| `fssh backup [--out 文件]` / `fssh restore 文件` | 把所有密钥备份到加密文件，可在其他 Mac 或其他认证模式下恢复 |
+| `fssh rekey` | 更换主密钥（原子地重新加密所有密钥） |
+| `fssh mode switch touchid\|otp` | 切换认证模式，保留所有密钥 |
+| `fssh status` | 总览：模式、密钥、agent、开机自启、ssh 配置 |
+| `fssh doctor` | 检查问题并给出修复命令 |
+| `fssh agent` | 在前台运行 agent |
+| `fssh log [-n 条数]` | 最近的签名请求（谁、哪把密钥、哪台主机、结果） |
+| `fssh otp recover\|change-password\|regen-recovery\|show-secret` | OTP 维护 |
+| `fssh shell` | 交互式主机管理（不带参数运行时的默认命令） |
+| `fssh uninstall [--purge]` | 从 ssh 配置、开机自启和 shell 配置中移除 fssh |
+| `fssh help [命令]`、`fssh version` | 帮助与版本 |
 
-### 密钥管理
+## 配置
 
-| 命令 | 说明 |
-|------|------|
-| `fssh import --alias 名字 --file 路径 --ask-passphrase` | 导入私钥 |
-| `fssh list` | 列出已导入的密钥 |
-| `fssh export --alias 名字 --out 路径` | 导出密钥（备份） |
-| `fssh remove --alias 名字` | 删除密钥 |
-
-### Agent 和 Shell
-
-| 命令 | 说明 |
-|------|------|
-| `fssh agent` | 启动 Agent |
-| `fssh status` | 查看状态 |
-| `fssh shell` | 进入交互式 Shell |
-
----
-
-## 配置文件
-
-配置文件位置：`~/.fssh/config.json`
+`~/.fssh/config.json`（所有字段都可省略）：
 
 ```json
 {
-    "socket": "~/.fssh/agent.sock",
-    "require_touch_id_per_sign": true,
-    "unlock_ttl_seconds": 600,
-    "log_level": "info",
-    "log_format": "plain"
+  "socket": "~/.fssh/agent.sock",
+  "require_touch_id_per_sign": true,
+  "unlock_ttl_seconds": 600,
+  "forwarded_sign": "prompt",
+  "language": "",
+  "log_level": "info",
+  "log_format": "plain"
 }
 ```
 
-**配置项说明：**
+| 字段 | 默认值 | 含义 |
+|---|---|---|
+| `require_touch_id_per_sign` | `true` | `false` 为便捷模式：agent 启动时解密全部密钥，之后不再验证 |
+| `unlock_ttl_seconds` | `600` | 一次解锁的复用时间；`0` 表示每次签名都验证 |
+| `forwarded_sign` | `prompt` | `ssh -A` 转发来的请求：`prompt`（每次确认）或 `deny`（拒绝） |
+| `language` | 跟随系统 | `zh` 或 `en`；也可用环境变量 `FSSH_LANG`，其次是 `LANG`，最后是 macOS 系统语言 |
 
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `socket` | Agent 监听的 socket 路径 | `~/.fssh/agent.sock` |
-| `require_touch_id_per_sign` | 是否每次 SSH 签名都验证（安全模式） | `true` |
-| `unlock_ttl_seconds` | 验证后的缓存时间（秒），缓存期内无需重复验证 | `600`（10分钟） |
-| `log_level` | 日志级别：`debug`/`info`/`warn`/`error` | `info` |
-| `log_format` | 日志格式：`plain`（易读）/`json`（结构化） | `plain` |
+## 认证模式
 
-**安全模式 vs 便捷模式：**
+### Touch ID（推荐）
 
-- `require_touch_id_per_sign: true`（安全模式）：每次 SSH 连接都需要验证（或在 TTL 缓存期内免验证）
-- `require_touch_id_per_sign: false`（便捷模式）：启动时一次性解密所有密钥，之后无需验证
+随机生成的 32 字节主密钥存放在 macOS 钥匙串中，fssh 在使用前先弹出 Touch ID 验证。没有可用传感器（没有 Touch ID、未录入指纹或合盖使用）时，改为询问 macOS 登录密码。
 
----
+### OTP
+
+适合更习惯「密码 + 验证器验证码」的用户：
+
+```bash
+fssh init --mode otp
+```
+
+设置密码（至少 12 位）、把密钥添加到验证器 App（安装了 `qrencode` 会显示二维码），并输入一次验证码确认后才会保存。同时会得到 10 个一次性**恢复码**。
+
+- 忘记密码：`fssh otp recover`（消耗一个恢复码）
+- 换手机：`fssh otp show-secret`
+- 改密码 / 重新生成恢复码：`fssh otp change-password`、`fssh otp regen-recovery`
+- agent 在后台运行时，密码和验证码通过 macOS 系统弹窗输入。
+- 每个验证码只能使用一次，刚用过的话请等下一个。
+
+**安全边界：** OTP 密钥保存在这台 Mac 上，用你的密码加密。同时拿到密码和 `~/.fssh` 副本的人，不需要验证器就能推出主密钥。验证码能阻止「只知道密码」的人在这台 Mac 上使用 fssh，但它不是硬件级的第二因素。请开启 FileVault。
+
+### 切换模式
+
+```bash
+fssh mode switch otp       # 或 touchid
+```
+
+所有密钥会先针对新模式重新加密并校验，确认无误后才切换；切换到 OTP 时需要先输入一次验证码。
+
+## Agent 行为
+
+| ssh-add | fssh agent |
+|---|---|
+| `ssh-add -l` | 列出已导入的密钥 |
+| `ssh-add -x` / `-X` | 锁定 / 解锁 agent（锁定期间不列出、不签名） |
+| `ssh-add -D` | 会显示「All identities removed」，但密钥**不会**被删除（它们保存在 fssh 的加密存储中）；实际效果是清除解锁缓存，下次签名重新验证 |
+| `ssh-add <文件>` | 拒绝，请使用 `fssh import` |
+
+## 备份、换机、卸载
+
+```bash
+fssh backup                         # 生成 ~/fssh-backup-<时间>.fsshbak，由单独的备份密码保护
+fssh restore fssh-backup-....fsshbak   # 在新 Mac 上 fssh init 之后执行
+fssh uninstall                      # 保留 ~/.fssh；--purge 同时删除密钥和主密钥
+```
+
+## 从旧版本升级
+
+- **OTP 用户：** 旧版本显示的 TOTP 密钥格式无法被验证器 App 使用。请运行 `fssh otp show-secret` 重新添加。旧恢复码无法找回任何东西，请运行 `fssh otp regen-recovery`。
+- **OTP 用户：** 旧版本还会把主密钥存进钥匙串，导致可以绕过 OTP。下次通过 OTP 解锁后会自动移除。
+- 每次升级后，macOS 可能再次询问是否允许 fssh 使用钥匙串，点击「始终允许」即可。
+- 运行一次 `fssh doctor`：它还会为旧版本导入的密钥补齐 `fssh bind` 需要的公钥文件。
 
 ## 常见问题
 
-### 1. 报错 "incorrect signature type" 或 "no mutual signature supported"
+先运行 `fssh doctor`。常见情况：
 
-**原因**：SSH 客户端没有通过 fssh Agent，或服务器不支持 RSA-SHA2。
-
-**解决方法**：
-1. 确认 Agent 正在运行：`launchctl list | grep fssh`
-2. 确认 `~/.ssh/config` 配置了 `IdentityAgent ~/.fssh/agent.sock`
-3. 或设置环境变量：`export SSH_AUTH_SOCK=~/.fssh/agent.sock`
-
-### 2. 运行 `fssh init` 时弹出 Keychain 授权对话框
-
-**提示内容**：「fssh 想要使用您存储在钥匙串中的机密信息」
-
-**原因**：macOS 安全机制，应用首次访问 Keychain 需要用户授权。
-
-**解决方法**：
-- ✅ 点击「允许」或输入 macOS 用户密码
-- 这是**正常且必要**的安全提示
-- 授权一次后，后续不会再提示
-- fssh 使用 Keychain 安全存储加密主密钥
-
-### 3. 输入后没有显示（光标不动）
-
-**原因**：终端控制问题。
-
-**解决方法**：使用 `ssh -tt` 强制分配 TTY：
-
-```bash
-ssh -tt user@server
-```
-
-### 4. launchctl load 报错 "Load failed: 5: Input/output error"
-
-**原因**：服务已经加载过，或未完成初始化。
-
-**解决方法**：
-
-```bash
-# 先卸载
-launchctl unload ~/Library/LaunchAgents/com.fssh.agent.plist
-
-# 确保已初始化
-fssh init --mode touchid  # 或 otp
-
-# 重新加载
-launchctl load -w ~/Library/LaunchAgents/com.fssh.agent.plist
-```
-
-### 4. OTP 验证码总是错误
-
-**原因**：手机时间不同步，或添加 TOTP 时信息有误。
-
-**解决方法**：
-1. 确保手机时间正确（开启自动设置时间）
-2. 删除验证器中的旧条目，重新添加
-3. 如果实在无法恢复，使用恢复码
-
-### 5. 忘记 OTP 密码怎么办？
-
-如果保存了恢复码，可以用恢复码重置。如果没有恢复码，只能重新初始化（会丢失已导入的密钥）：
-
-```bash
-# 警告：这会删除所有已导入的密钥！
-rm -rf ~/.fssh
-fssh init --mode otp
-# 然后重新导入密钥
-```
-
----
+- **ssh 没有弹出 Touch ID / OTP**：agent 没在运行，或 ssh 没有配置使用它。`fssh doctor` 会给出具体修复命令。
+- **ssh 要求输入私钥文件的密码**：agent 拒绝了请求（已锁定、被取消或没在运行），ssh 退回使用 `~/.ssh` 里的明文私钥。请归档已导入的原文件：`fssh import ... --original archive`，或按 `fssh doctor` 的提示处理。
+- **「Too many authentication failures」**：提供的密钥太多，请绑定主机：`fssh bind <主机> <别名>`。
+- **「incorrect signature type」/「no mutual signature supported」**：服务器的 RSA 配置较旧，`fssh sshd-align --host <服务器>` 可开启 RSA-SHA2。
+- **OTP 验证码被拒绝**：检查手机时间；每个验证码只能用一次。
+- **agent 日志**：`~/Library/Logs/fssh/agent.log`。
 
 ## 安全说明
 
-1. **私钥加密存储**：导入的私钥使用 AES-256-GCM 加密，即使电脑被盗，没有 Touch ID/OTP 也无法解密
-2. **推荐启用 FileVault**：macOS 全盘加密，提供额外保护
-3. **不要泄露恢复码**：OTP 模式的恢复码相当于万能钥匙，请妥善保管
-4. **定期备份密钥**：使用 `fssh export` 备份重要密钥
+- 私钥用 AES-256-GCM 加密，每把私钥用 HKDF-SHA256 派生独立密钥，指纹作为附加认证数据。
+- Touch ID 模式：主密钥在钥匙串中；Touch ID 检查由 fssh 执行（应用层检查，不是钥匙串的访问控制标志）。
+- 便捷模式会把解密后的私钥一直保存在 agent 内存中，直到 agent 退出。
+- 开启 agent 转发时，连接期间远程主机可以使用你的密钥；fssh 会对每次转发请求单独确认。
+- 建议开启 FileVault。
 
----
+## 开发
 
-## 技术细节
+```bash
+go build ./cmd/fssh
+go test -race ./...
+```
 
-- **加密算法**：AES-256-GCM + HKDF（每个密钥文件独立 salt/nonce）
-- **密钥派生**：PBKDF2（100,000 次迭代）
-- **TOTP 标准**：RFC 6238
-- **兼容性**：完全兼容 OpenSSH ssh-agent 协议
-
----
+访问钥匙串的测试默认不运行（需设置 `FSSH_KEYCHAIN_TESTS=1`），并使用隔离的条目名称（`FSSH_KEYCHAIN_SERVICE`）。调用钥匙串时不要把 `HOME` 指向临时目录：macOS 会在 `$HOME` 下寻找登录钥匙串，找不到时会弹出「Keychain Not Found」对话框。
 
 ## 致谢
 

@@ -1,6 +1,7 @@
 package keychain
 
 import (
+	"fssh/internal/i18n"
     "errors"
     "fmt"
     "os"
@@ -86,7 +87,7 @@ func StoreMasterKey(key []byte, overwrite bool) error {
         // Check if it's a user cancellation (-128)
         if kcErr, ok := err.(kc.Error); ok {
             if kcErr == kc.ErrorUserCanceled {
-                return fmt.Errorf("用户取消了 Keychain 授权")
+                return errors.New(i18n.T("keychain.canceled"))
             }
             // If item already exists (despite our check), that's okay
             if kcErr == kc.ErrorDuplicateItem {
@@ -102,7 +103,7 @@ func StoreMasterKey(key []byte, overwrite bool) error {
         }
     }
 
-    return fmt.Errorf("存储 master key 失败 (尝试 %d 次): %w", maxRetries, err)
+    return fmt.Errorf(i18n.T("keychain.store_failed"), maxRetries, err)
 }
 
 // LoadMasterKey shows the Touch ID prompt with reason, then reads the master key.
@@ -130,7 +131,7 @@ func LoadMasterKeyWithoutPrompt() ([]byte, error) {
             return nil, err
         }
         if len(res) == 0 {
-            return nil, fmt.Errorf("master key not initialized")
+            return nil, errors.New(i18n.T("keychain.not_initialized"))
         }
     }
     return res[0].Data, nil

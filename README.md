@@ -1,398 +1,252 @@
-# fssh — Secure macOS SSH Key Manager with Touch ID & OTP Support
+# fssh — SSH key manager for macOS, unlocked by Touch ID or OTP
+
+[中文文档](README_CN.md)
 
 ![Touch ID Fingerprint](images/finger.png)
 
 ## What is fssh?
 
-fssh is a macOS-only SSH key management tool that solves two common pain points:
+fssh keeps your SSH private keys encrypted and acts as your SSH agent. Instead of plaintext key files or passphrases, every signature is unlocked with Touch ID (or your macOS login password), or with a password plus an authenticator code (OTP mode).
 
-1. **Entering private key passphrase every SSH login** → fssh lets you unlock with Touch ID or One-Time Password (OTP)
-2. **Forgetting server aliases in `~/.ssh/config`** → fssh provides an interactive shell with Tab completion for quick connections
-
-## Why use fssh for macOS SSH Management?
-If you are looking for a more secure alternative to ssh-agent on macOS, fssh provides:
-Biometric SSH Authentication: Use Touch ID to unlock SSH keys instead of typing long passphrases.
-Two-Factor Authentication (2FA) for SSH: Add an extra layer of security with TOTP/OTP for private keys.
-SSH Alias Discovery: Never forget your ~/.ssh/config aliases again with an interactive shell and tab-completion.
-## How It Works
+- **No plaintext keys on disk** — keys are encrypted with AES-256-GCM; `fssh keygen` creates new keys that never touch the disk unencrypted
+- **Know who is asking** — the unlock prompt shows which program wants which key for which server, and warns about forwarded (`ssh -A`) requests
+- **The right key for each host** — `fssh bind github.com work` makes a host use exactly one key
+- **Interactive shell** — browse, search and connect to the hosts in `~/.ssh/config`, with Tab completion
+- **Self-check** — `fssh doctor` finds setup problems and tells you how to fix them
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  SSH Client │ ──▶ │  fssh Agent │ ──▶ │Remote Server│
-└─────────────┘     └─────────────┘     └─────────────┘
-                          │
-                    Touch ID or OTP
-                    unlocks encrypted
-                    private keys
+┌─────────────┐     ┌──────────────────────┐     ┌──────────────┐
+│ ssh / git   │ ──▶ │ fssh agent           │ ──▶ │ remote server│
+└─────────────┘     │ Touch ID / OTP prompt│     └──────────────┘
+                    │ decrypts one key     │
+                    └──────────────────────┘
 ```
 
-Your SSH private keys are stored encrypted. They can only be decrypted after Touch ID fingerprint or OTP verification.
-
-## Screenshots
-
-**Touch ID prompt during SSH login:**
-
-![Touch ID Authentication](images/finger.png)
-
-**Interactive shell for viewing and connecting to servers:**
+**Interactive shell:**
 
 ![Interactive Shell](images/shell.png)
 
 ---
 
-## Quick Start
+## Install
 
-### Option A: Interactive Setup Wizard (Recommended)
+fssh supports macOS on Apple Silicon and Intel.
 
-The easiest way to get started - one command does everything:
-
-```bash
-# Build the project
-go build ./cmd/fssh
-
-# Run interactive setup wizard
-./fssh init
-```
-
-The wizard will guide you through:
-1. **Choose authentication mode** - Touch ID or OTP
-2. **Install binary** - Automatically copies fssh to /usr/local/bin
-3. **Import SSH keys** - Scans and imports keys from ~/.ssh/
-4. **Configure auto-start** - Sets up LaunchAgent for automatic startup
-5. **Start agent** - Launches fssh agent immediately
-6. **Configure SSH client** - Updates ~/.ssh/config automatically
-
-After completion, you're ready to use SSH with Touch ID/OTP authentication!
-
-### Option B: Manual Setup (Advanced)
-
-For users who prefer step-by-step control:
-
-#### Step 1: Install
+**Homebrew** (builds from source):
 
 ```bash
-# After downloading the source code, build it
-go build ./cmd/fssh
-
-# Install to system directory (requires admin privileges)
-sudo cp fssh /usr/local/bin/
+brew tap Mister-leo/fssh
+brew install fssh
 ```
 
-#### Step 2: Initialize
-
-Choose an authentication mode based on your device:
-
-**If your Mac has Touch ID (MacBook Pro/Air 2016+, iMac with Magic Keyboard, etc.):**
+**Install script** (release binary; verifies the checksum and removes the download quarantine):
 
 ```bash
-fssh init --mode touchid
+curl -fsSL https://raw.githubusercontent.com/Mister-leo/fssh/main/contrib/install.sh | sh
 ```
 
-**If your Mac doesn't have Touch ID (Mac Mini, older Macs, VMs, etc.):**
+**From source** (Go 1.21+, Xcode command line tools):
 
 ```bash
-fssh init --mode otp
+go build -o fssh ./cmd/fssh
+sudo install -m 755 fssh /usr/local/bin/fssh
 ```
 
-During OTP mode initialization:
-1. You'll set a password (at least 12 characters)
-2. A TOTP secret will be displayed - add it to an authenticator app (e.g., Google Authenticator, Authy)
-3. 10 recovery codes will be shown - **save them securely**
+The release binary is not signed by Apple. The install script and Homebrew avoid Gatekeeper; for a manual download run `xattr -d com.apple.quarantine fssh` first.
 
-#### Step 3: Import SSH Private Key
+## Quick start
 
 ```bash
-# Import your SSH private key (you'll be prompted for passphrase if the key has one)
-fssh import --alias mykey --file ~/.ssh/id_rsa --ask-passphrase
+fssh init      # setup wizard
+fssh doctor    # check everything is connected
+ssh my-server  # Touch ID / OTP prompt appears
 ```
 
-Parameters:
-- `--alias`: A name for this key for easy reference
-- `--file`: Path to the private key file
-- `--ask-passphrase`: Add this if the private key is passphrase-protected
+The wizard walks through:
 
-#### Step 4: Start the Agent
+1. **Authentication** — Touch ID (recommended; Macs without a usable sensor get the login-password prompt instead) or OTP
+2. **Install** fssh to `/usr/local/bin` (skipped for Homebrew installs)
+3. **Import keys** from `~/.ssh`, then archive the plaintext originals to `~/.ssh/fssh-archive/` (or delete / keep them)
+4. **Auto-start** the agent at login (LaunchAgent)
+5. **Start** the agent
+6. **Configure ssh** — a marked block at the top of `~/.ssh/config` makes every host use the fssh agent
+7. **Shell environment** (optional) — exports `SSH_AUTH_SOCK` for `ssh-add` and tools that ignore `~/.ssh/config`
+
+Running `fssh init` again offers to keep the setup, switch the auth mode (keeping all keys), or start over.
+
+## Everyday use
+
+### Unlocking
+
+Use `ssh`, `git`, `scp` as usual. After you authenticate, the agent caches the unlock for `unlock_ttl_seconds` (default 600), so a burst of connections — or Ansible against 50 hosts — needs only one prompt. Set it to `0` to authenticate every signature.
+
+The prompt says who is asking, e.g. *"git → ssh wants to use key "work" to log in to github.com"*. Requests arriving through agent forwarding (`ssh -A`) are flagged and **always** ask, ignoring the cache; set `"forwarded_sign": "deny"` to refuse them outright. `fssh log` lists recent signature requests.
+
+### Several keys
+
+Without a binding, ssh offers every key in the agent to every server: you may push with the wrong GitHub account, and servers reject you after ~6 keys ("Too many authentication failures"). Bind hosts to keys:
 
 ```bash
-fssh agent
+fssh bind github.com work        # adds IdentityFile ~/.fssh/pubkeys/work.pub + IdentitiesOnly yes
+fssh bind gitlab.com personal
+fssh list                        # shows which hosts use which key
+fssh unbind gitlab.com
 ```
 
-Once started, the Agent runs in the background, listening on `~/.fssh/agent.sock`.
-
-#### Step 5: Configure SSH to Use fssh Agent
-
-Edit `~/.ssh/config` and add at the **very beginning**:
-
-```
-Host *
-    IdentityAgent ~/.fssh/agent.sock
-```
-
-This routes all SSH connections through fssh Agent.
-
-#### Step 6: Start Using
+### New keys
 
 ```bash
-# Use SSH normally - Touch ID or OTP prompt will appear automatically
-ssh user@yourserver.com
+fssh keygen deploy                  # ed25519; --type ecdsa|rsa, --bits 4096
+fssh pubkey deploy --copy           # public key to the clipboard
 ```
 
----
+### Interactive shell
 
-## Interactive Setup Wizard Details
+Run `fssh` (or `fssh shell`):
 
-The interactive wizard (`fssh init`) performs the following steps:
-
-### Step-by-step Process
-
-**Step 1: Welcome & Initialization Check**
-- Displays welcome banner
-- Checks if fssh is already initialized
-- Prompts for confirmation if reinitializing
-
-**Step 2: Choose Authentication Mode**
-- Auto-detects Touch ID availability on your Mac
-- Prompts you to choose between:
-  - Touch ID (recommended for supported devices)
-  - OTP (for devices without Touch ID or additional security)
-
-**Step 3: Initialize Authentication**
-- Executes the selected authentication mode setup
-- For Touch ID: Generates and stores master key in macOS Keychain
-- For OTP: Sets up password + TOTP with recovery codes
-
-**Step 4: Binary Installation**
-- Detects current executable location
-- Copies fssh to `/usr/local/bin/` (requires sudo)
-- Sets proper permissions (755)
-
-**Step 5: Import SSH Keys**
-- Scans `~/.ssh/` directory for private keys
-- Detects standard key files: `id_rsa`, `id_ed25519`, `id_ecdsa`, etc.
-- Identifies encrypted vs unencrypted keys
-- Prompts for each key:
-  - Suggested alias (e.g., `id_ed25519` → `ed25519`)
-  - Passphrase if key is encrypted
-- Imports keys with encryption protection
-
-**Step 6: Configure LaunchAgent**
-- Creates plist file at `~/Library/LaunchAgents/com.fssh.agent.plist`
-- Loads LaunchAgent for auto-start on login
-- Configures agent to keep running
-
-**Step 7: Start Agent**
-- Waits for agent to start (up to 10 seconds)
-- Verifies socket connection at `~/.fssh/agent.sock`
-
-**Step 8: Configure SSH Client**
-- Prompts to update `~/.ssh/config`
-- Creates backup before modification
-- Prepends `IdentityAgent` configuration for automatic SSH integration
-
-### Non-Interactive Mode
-
-For automation, scripts, or CI/CD:
-
-```bash
-# Skip all interactive prompts
-fssh init --non-interactive --mode touchid
-
-# Or specify mode directly
-fssh init --mode otp
+```
+fssh> list                       # all hosts (follows Include, merges aliases)
+fssh> list -r                    # with resolved IPs (proxy fake-ip addresses are hidden)
+fssh> search prod
+fssh> web1                       # connect by name, alias, number, hostname or IP
+fssh> connect me@10.0.0.9 -p 2222   # anything ssh accepts
+fssh> show web1                  # details, including the bound fssh key
+fssh> add / edit web1 / delete web1
+fssh> global show                # the Host * block
 ```
 
----
+`edit` keeps every option it does not manage (LocalForward, SetEnv, comments, extra aliases). Hosts defined in `Include`d files are shown but not edited.
 
-## Auto-Start on Login
-
-Tired of manually starting the Agent after each reboot? Set up auto-start:
-
-```bash
-# Copy the launch configuration file
-cp contrib/com.fssh.agent.plist ~/Library/LaunchAgents/
-
-# Load the service
-launchctl load -w ~/Library/LaunchAgents/com.fssh.agent.plist
-```
-
-**Check service status:**
-
-```bash
-launchctl list | grep fssh
-```
-
-Normal output looks like: `-    0    com.fssh.agent` (0 means running)
-
-**To restart the service:**
-
-```bash
-launchctl kickstart -k gui/$(id -u)/com.fssh.agent
-```
-
-**To stop the service:**
-
-```bash
-launchctl unload ~/Library/LaunchAgents/com.fssh.agent.plist
-```
-
----
-
-## Interactive Shell
-
-Run `fssh` or `fssh shell` to enter interactive mode:
-
-```bash
-$ fssh
-fssh> list                    # List all hosts from ~/.ssh/config
-fssh> search prod             # Search for hosts containing "prod"
-fssh> connect myserver        # Connect to myserver
-fssh> myserver                # Or just type the hostname to connect
-fssh> exit                    # Exit the shell
-```
-
-**Tab completion** is supported - type partial hostname and press Tab to autocomplete.
-
----
-
-## Command Reference
-
-### Initialization Commands
+## Commands
 
 | Command | Description |
-|---------|-------------|
-| `fssh init` | Interactive setup wizard (recommended) |
-| `fssh init --interactive` | Explicitly run interactive wizard |
-| `fssh init --mode touchid` | Initialize with Touch ID (non-interactive) |
-| `fssh init --mode otp` | Initialize with OTP (non-interactive) |
-| `fssh init --non-interactive --mode touchid` | Non-interactive mode for scripts/CI |
-
-### Key Management
-
-| Command | Description |
-|---------|-------------|
-| `fssh import --alias name --file path --ask-passphrase` | Import a private key |
-| `fssh list` | List imported keys |
-| `fssh export --alias name --out path` | Export a key (backup) |
-| `fssh remove --alias name` | Remove a key |
-
-### Agent & Shell
-
-| Command | Description |
-|---------|-------------|
-| `fssh agent` | Start the Agent |
-| `fssh status` | Check status |
-| `fssh shell` | Enter interactive shell |
-
----
+|---|---|
+| `fssh init` | Setup wizard (`--mode touchid\|otp` for non-interactive, `--force` to start over) |
+| `fssh import --alias A --file F` | Import a private key; asks for its passphrase; `--original archive\|delete\|keep` |
+| `fssh keygen A` | Generate a key directly into encrypted storage |
+| `fssh list [--json]` | List keys with type, fingerprint and bound hosts |
+| `fssh pubkey A [--copy]` | Print a public key |
+| `fssh bind HOST A` / `fssh unbind HOST` | Pin a host to one key |
+| `fssh export --alias A --out F` | Export in OpenSSH format (`--ask-passphrase` to encrypt; `--format pkcs8` for unencrypted PKCS#8) |
+| `fssh remove --alias A` | Delete a key (asks for confirmation; `--yes` in scripts) |
+| `fssh backup [--out F]` / `fssh restore F` | Encrypted backup of all keys, restorable on another Mac or auth mode |
+| `fssh rekey` | Rotate the master key (keys are re-encrypted atomically) |
+| `fssh mode switch touchid\|otp` | Change the auth mode, keeping every key |
+| `fssh status` | Overview: mode, keys, agent, auto-start, ssh config |
+| `fssh doctor` | Find problems and print the fix |
+| `fssh agent` | Run the agent in the foreground |
+| `fssh log [-n N]` | Recent signature requests (who, which key, which host, result) |
+| `fssh otp recover\|change-password\|regen-recovery\|show-secret` | OTP maintenance |
+| `fssh shell` | Interactive host manager (default when run without arguments) |
+| `fssh uninstall [--purge]` | Remove fssh from ssh config, auto-start and shell files |
+| `fssh help [command]`, `fssh version` | Help and version |
 
 ## Configuration
 
-Configuration file location: `~/.fssh/config.json`
+`~/.fssh/config.json` (all fields optional):
 
 ```json
 {
-    "socket": "~/.fssh/agent.sock",
-    "require_touch_id_per_sign": true,
-    "unlock_ttl_seconds": 600,
-    "log_level": "info",
-    "log_format": "plain"
+  "socket": "~/.fssh/agent.sock",
+  "require_touch_id_per_sign": true,
+  "unlock_ttl_seconds": 600,
+  "forwarded_sign": "prompt",
+  "language": "",
+  "log_level": "info",
+  "log_format": "plain"
 }
 ```
 
-**Configuration options:**
+| Field | Default | Meaning |
+|---|---|---|
+| `require_touch_id_per_sign` | `true` | `false` = convenience mode: decrypt all keys when the agent starts and never prompt again |
+| `unlock_ttl_seconds` | `600` | How long one unlock is reused; `0` = authenticate every signature |
+| `forwarded_sign` | `prompt` | Requests via `ssh -A`: `prompt` (always ask) or `deny` |
+| `language` | system | `zh` or `en`; also `FSSH_LANG`, then `LANG`, then the macOS language |
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `socket` | Agent socket path | `~/.fssh/agent.sock` |
-| `require_touch_id_per_sign` | Require verification for each SSH signature (secure mode) | `true` |
-| `unlock_ttl_seconds` | Cache duration after verification (seconds) - no re-verification needed within this period | `600` (10 min) |
-| `log_level` | Log level: `debug`/`info`/`warn`/`error` | `info` |
-| `log_format` | Log format: `plain` (readable) / `json` (structured) | `plain` |
+## Authentication modes
 
-**Secure Mode vs Convenience Mode:**
+### Touch ID (recommended)
 
-- `require_touch_id_per_sign: true` (Secure): Verification required for each SSH connection (or within TTL cache period)
-- `require_touch_id_per_sign: false` (Convenience): All keys decrypted once at startup, no further verification needed
+A random 32-byte master key lives in the macOS Keychain; fssh shows the Touch ID prompt before using it. Macs without a usable sensor (no Touch ID, no enrolled finger, lid closed) get the macOS login-password prompt instead.
 
----
+### OTP
+
+For people who prefer a password plus authenticator codes:
+
+```bash
+fssh init --mode otp
+```
+
+You choose a password (12+ characters), add the secret to an authenticator app (QR code shown if `qrencode` is installed), and confirm with a code before anything is saved. You also get 10 single-use **recovery codes**.
+
+- Forgot the password: `fssh otp recover` (uses one recovery code)
+- New phone: `fssh otp show-secret`
+- Change password / new recovery codes: `fssh otp change-password`, `fssh otp regen-recovery`
+- When the agent runs in the background, password and code are asked in macOS dialogs.
+- A code is accepted only once; wait for the next one if you just used it.
+
+**Security boundary:** the OTP secret is stored on this Mac, encrypted with your password. Someone who has both your password and a copy of `~/.fssh` can derive the master key without the authenticator. The code check stops someone who only knows the password from using fssh on this Mac, but it is not a hardware second factor. Use FileVault.
+
+### Switching
+
+```bash
+fssh mode switch otp       # or touchid
+```
+
+Every key is re-encrypted for the new mode and verified before the switch is committed; on OTP you confirm a code first.
+
+## Agent behaviour
+
+| ssh-add | fssh agent |
+|---|---|
+| `ssh-add -l` | lists imported keys |
+| `ssh-add -x` / `-X` | locks / unlocks the agent (nothing is listed or signed while locked) |
+| `ssh-add -D` | prints "All identities removed" but **keeps** the keys (they live in fssh's encrypted store); it forgets the cached unlock, so the next signature asks again |
+| `ssh-add <file>` | refused: use `fssh import` |
+
+## Backup, new Mac, uninstall
+
+```bash
+fssh backup                         # ~/fssh-backup-<time>.fsshbak, protected by a backup passphrase
+fssh restore fssh-backup-....fsshbak   # on the new Mac, after fssh init
+fssh uninstall                      # keeps ~/.fssh; --purge deletes keys and the master key
+```
+
+## Upgrading from earlier versions
+
+- **OTP users:** older versions showed the TOTP secret in a format authenticator apps cannot use. Run `fssh otp show-secret` and add the secret again. Old recovery codes cannot recover anything; run `fssh otp regen-recovery`.
+- **OTP users:** older versions also stored the master key in the Keychain, which bypassed OTP. It is removed automatically after your next OTP unlock.
+- After every upgrade macOS may ask whether fssh may use the Keychain; click "Always Allow".
+- Run `fssh doctor`: it also creates the public key files `fssh bind` needs for keys imported earlier.
 
 ## Troubleshooting
 
-### 1. Error "incorrect signature type" or "no mutual signature supported"
+Start with `fssh doctor`. Common cases:
 
-**Cause**: SSH client isn't using fssh Agent, or server doesn't support RSA-SHA2.
+- **ssh does not ask for Touch ID / OTP** — the agent is not running, or ssh is not configured to use it. `fssh doctor` prints the exact fix.
+- **ssh asks for a key file passphrase** — the agent refused (locked, cancelled, not running) and ssh fell back to a plaintext key in `~/.ssh`. Archive imported originals: `fssh import ... --original archive`, or follow `fssh doctor`.
+- **"Too many authentication failures"** — too many keys offered; bind the host: `fssh bind <host> <alias>`.
+- **"incorrect signature type" / "no mutual signature supported"** — old RSA server; `fssh sshd-align --host <server>` enables RSA-SHA2 on it.
+- **OTP code rejected** — check the phone clock; a code works only once.
+- **Agent logs** — `~/Library/Logs/fssh/agent.log`.
 
-**Solution**:
-1. Verify Agent is running: `launchctl list | grep fssh`
-2. Verify `~/.ssh/config` has `IdentityAgent ~/.fssh/agent.sock`
-3. Or set environment variable: `export SSH_AUTH_SOCK=~/.fssh/agent.sock`
+## Security notes
 
-### 2. No input display (cursor doesn't move)
+- Keys are encrypted with AES-256-GCM using per-key HKDF-SHA256 keys; the fingerprint is authenticated data.
+- Touch ID mode: the master key is in the Keychain; the Touch ID check is enforced by fssh (an app-level check, not a Keychain access-control flag).
+- Convenience mode keeps decrypted keys in agent memory until it stops.
+- Agent forwarding exposes your keys to the remote host while connected; fssh asks for every forwarded signature.
+- Enable FileVault.
 
-**Cause**: Terminal control issue.
-
-**Solution**: Use `ssh -tt` to force TTY allocation:
-
-```bash
-ssh -tt user@server
-```
-
-### 3. launchctl load error "Load failed: 5: Input/output error"
-
-**Cause**: Service already loaded, or initialization incomplete.
-
-**Solution**:
+## Development
 
 ```bash
-# Unload first
-launchctl unload ~/Library/LaunchAgents/com.fssh.agent.plist
-
-# Ensure initialization is complete
-fssh init --mode touchid  # or otp
-
-# Reload
-launchctl load -w ~/Library/LaunchAgents/com.fssh.agent.plist
+go build ./cmd/fssh
+go test -race ./...
 ```
 
-### 4. OTP verification code always wrong
-
-**Cause**: Phone time out of sync, or TOTP was added incorrectly.
-
-**Solution**:
-1. Ensure phone time is correct (enable automatic time setting)
-2. Delete the old entry in authenticator app and re-add
-3. If recovery is impossible, use recovery codes
-
-### 5. Forgot OTP password?
-
-If you saved recovery codes, use them to reset. Without recovery codes, you must reinitialize (losing imported keys):
-
-```bash
-# Warning: This deletes all imported keys!
-rm -rf ~/.fssh
-fssh init --mode otp
-# Then re-import your keys
-```
-
----
-
-## Security Notes
-
-1. **Encrypted key storage**: Imported private keys are encrypted with AES-256-GCM - even if your computer is stolen, keys can't be decrypted without Touch ID/OTP
-2. **Enable FileVault**: macOS full-disk encryption provides additional protection
-3. **Protect recovery codes**: OTP recovery codes are like master keys - store them securely
-4. **Regular backups**: Use `fssh export` to backup important keys
-
----
-
-## Technical Details
-
-- **Encryption**: AES-256-GCM + HKDF (independent salt/nonce per key file)
-- **Key derivation**: PBKDF2 (100,000 iterations)
-- **TOTP standard**: RFC 6238
-- **Compatibility**: Fully compatible with OpenSSH ssh-agent protocol
-
----
+Tests that touch the Keychain are opt-in (`FSSH_KEYCHAIN_TESTS=1`) and use an isolated item name (`FSSH_KEYCHAIN_SERVICE`). Do not point `HOME` at a temporary directory while calling the Keychain: macOS looks for the login keychain under `$HOME` and shows a "Keychain Not Found" dialog.
 
 ## Credits
 

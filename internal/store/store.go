@@ -380,14 +380,28 @@ func ReencryptAll(oldKeys [][]byte, newKey []byte, commit func() error) (int, er
     return n, nil
 }
 
-func ExportPKCS8PEM(rec *Record, passphrase string) ([]byte, error) {
-    block := &pem.Block{Type: "PRIVATE KEY", Bytes: rec.PKCS8DER}
+// ExportPKCS8PEM encodes the key as unencrypted PKCS#8 PEM ("BEGIN PRIVATE
+// KEY"). Encrypted PKCS#8 is not offered: the legacy PEM encryption Go
+// provides is insecure and not understood by OpenSSH; use ExportOpenSSH.
+func ExportPKCS8PEM(rec *Record) []byte {
+    return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: rec.PKCS8DER})
+}
+// ExportOpenSSH encodes the key in OpenSSH format ("BEGIN OPENSSH PRIVATE
+// KEY"), optionally encrypted with passphrase (bcrypt KDF + AES-256-CTR),
+// readable by ssh and ssh-keygen.
+func ExportOpenSSH(rec *Record, passphrase string) ([]byte, error) {
+    priv, err := x509.ParsePKCS8PrivateKey(rec.PKCS8DER)
+    if err != nil {
+        return nil, err
+    }
+    var block *pem.Block
     if passphrase != "" {
-        enc, err := x509.EncryptPEMBlock(rand.Reader, block.Type, block.Bytes, []byte(passphrase), x509.PEMCipherAES256)
-        if err != nil {
-            return nil, err
-        }
-        return pem.EncodeToMemory(enc), nil
+        block, err = ssh.MarshalPrivateKeyWithPassphrase(priv, rec.Comment, []byte(passphrase))
+    } else {
+        block, err = ssh.MarshalPrivateKey(priv, rec.Comment)
+    }
+    if err != nil {
+        return nil, err
     }
     return pem.EncodeToMemory(block), nil
 }

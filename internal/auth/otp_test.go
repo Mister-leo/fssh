@@ -65,6 +65,23 @@ func (f *fakePrompter) count(prefix string) int {
 
 const testPassword = "correct horse battery"
 
+// nopCounters disables replay protection for tests that need several codes
+// within one 30-second window.
+type nopCounters struct{}
+
+func (nopCounters) Last() int64        { return 0 }
+func (nopCounters) Record(int64) error { return nil }
+
+func newTestOTPProvider(t *testing.T, ttl int) *OTPProvider {
+	t.Helper()
+	p, err := NewOTPProvider(ttl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.counters = nopCounters{}
+	return p
+}
+
 // setupOTP initializes OTP in a temp HOME. seedTTL controls password caching.
 func setupOTP(t *testing.T, seedTTL int, recovery bool) []byte {
 	t.Helper()
@@ -85,10 +102,7 @@ func setupOTP(t *testing.T, seedTTL int, recovery bool) []byte {
 
 func TestOTPUnlockAndMasterKeyCache(t *testing.T) {
 	seed := setupOTP(t, 3600, false)
-	p, err := NewOTPProvider(600)
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := newTestOTPProvider(t, 600)
 	fp := &fakePrompter{passwords: []string{testPassword}, seed: seed}
 
 	mk1, err := p.UnlockMasterKey(Request{Reason: "ssh wants key work", Prompter: fp})
@@ -112,7 +126,7 @@ func TestOTPUnlockAndMasterKeyCache(t *testing.T) {
 
 func TestOTPNoCacheAsksCodeButReusesPassword(t *testing.T) {
 	seed := setupOTP(t, 3600, false)
-	p, _ := NewOTPProvider(600)
+	p := newTestOTPProvider(t, 600)
 	fp := &fakePrompter{passwords: []string{testPassword}, seed: seed}
 
 	for i := 0; i < 2; i++ {
@@ -128,7 +142,7 @@ func TestOTPNoCacheAsksCodeButReusesPassword(t *testing.T) {
 
 func TestOTPWrongPasswordRetriesThenFails(t *testing.T) {
 	seed := setupOTP(t, 0, false)
-	p, _ := NewOTPProvider(0)
+	p := newTestOTPProvider(t, 0)
 
 	fp := &fakePrompter{passwords: []string{"wrong-password-1", testPassword}, seed: seed}
 	if _, err := p.UnlockMasterKey(Request{Prompter: fp}); err != nil {
@@ -149,7 +163,7 @@ func TestOTPWrongPasswordRetriesThenFails(t *testing.T) {
 
 func TestOTPWrongCodeFails(t *testing.T) {
 	setupOTP(t, 0, false)
-	p, _ := NewOTPProvider(0)
+	p := newTestOTPProvider(t, 0)
 	fp := &fakePrompter{passwords: []string{testPassword}, code: "000000"}
 	if _, err := p.UnlockMasterKey(Request{Prompter: fp}); err == nil {
 		t.Fatal("wrong code accepted")
@@ -161,7 +175,7 @@ func TestOTPWrongCodeFails(t *testing.T) {
 
 func TestOTPConcurrentRequestsShowOneDialog(t *testing.T) {
 	seed := setupOTP(t, 3600, false)
-	p, _ := NewOTPProvider(600)
+	p := newTestOTPProvider(t, 600)
 	fp := &fakePrompter{passwords: []string{testPassword}, seed: seed}
 
 	var wg sync.WaitGroup
@@ -182,7 +196,7 @@ func TestOTPConcurrentRequestsShowOneDialog(t *testing.T) {
 
 func TestOTPPrepareRekey(t *testing.T) {
 	seed := setupOTP(t, 3600, false)
-	p, _ := NewOTPProvider(600)
+	p := newTestOTPProvider(t, 600)
 	fp := &fakePrompter{passwords: []string{testPassword}, seed: seed}
 
 	before, err := p.UnlockMasterKey(Request{Prompter: fp})
@@ -218,7 +232,7 @@ func TestOTPLegacyRecoveryWarnsOnce(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	p, _ := NewOTPProvider(0)
+	p := newTestOTPProvider(t, 0)
 	fp := &fakePrompter{passwords: []string{testPassword}, seed: seed}
 	for i := 0; i < 2; i++ {
 		if _, err := p.UnlockMasterKey(Request{Prompter: fp}); err != nil {
@@ -227,5 +241,28 @@ func TestOTPLegacyRecoveryWarnsOnce(t *testing.T) {
 	}
 	if len(fp.notified) != 1 {
 		t.Fatalf("legacy recovery notices = %d, want 1", len(fp.notified))
+	}
+}
+
+func TestOTPRejectsReplayedCode(t *testing.T) {
+	seed := setupOTP(t, 3600, false)
+	p, err := NewOTPProvider(0) // real file-backed replay guard
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := otp.GetCurrentCode(seed, "SHA1", 6, 30)
+	fp := &fakePrompter{passwords: []string{testPassword}, code: code}
+
+	if _, err := p.UnlockMasterKey(Request{Prompter: fp}); err != nil {
+		t.Fatalf("first use: %v", err)
+	}
+	// a new process (fresh provider) must not accept the same code either
+	p2, _ := NewOTPProvider(0)
+	fp2 := &fakePrompter{passwords: []string{testPassword}, code: code}
+	if _, err := p2.UnlockMasterKey(Request{Prompter: fp2}); err == nil {
+		t.Fatal("replayed TOTP code accepted")
+	}
+	if !strings.Contains(strings.Join(fp2.asked, "\n"), i18n.T("otp.retry_code_used")) {
+		t.Fatalf("user not told the code was already used: %v", fp2.asked)
 	}
 }

@@ -36,6 +36,12 @@ static int touchid_prompt(const char* creason) {
     while (ok == -2) { [NSThread sleepForTimeInterval:0.05]; }
     return ok;
 }
+
+static int biometry_available(void) {
+    LAContext *context = [[LAContext alloc] init];
+    NSError *error = nil;
+    return [context canEvaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics error:&error] ? 1 : 0;
+}
 */
 import "C"
 
@@ -51,4 +57,11 @@ func RequireBiometry(reason string) error {
     if r == 1 { return nil }
     if r == -1 { return errors.New("biometry/user presence not available") }
     return errors.New("biometry/user presence failed")
+}
+
+// BiometryAvailable reports whether Touch ID can be used right now: the Mac
+// has a sensor (or a Touch ID keyboard), a finger is enrolled, and the lid is
+// open. When false, RequireBiometry falls back to the macOS login password.
+func BiometryAvailable() bool {
+    return C.biometry_available() == 1
 }

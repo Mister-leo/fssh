@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,7 +26,7 @@ type SSHKeyInfo struct {
 func importSSHKeys() error {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return errors.New(i18n.T("setup.err_home", err))
 	}
 
 	sshDir := filepath.Join(home, ".ssh")
@@ -37,31 +38,29 @@ func importSSHKeys() error {
 	}
 
 	if len(keys) == 0 {
-		fmt.Println("No SSH private keys found in ~/.ssh/")
-		fmt.Println()
-		fmt.Println("You can import keys later with: fssh import --alias <name> --file <path>")
+		fmt.Println(i18n.T("keys.none_found"))
 		return nil
 	}
 
 	// Display found keys
-	fmt.Printf("Found %d SSH private key(s):\n", len(keys))
+	fmt.Println(i18n.T("keys.found", len(keys)))
 	fmt.Println()
 
 	for i, key := range keys {
 		encrypted := ""
 		if key.IsEncrypted {
-			encrypted = " [encrypted]"
+			encrypted = " " + i18n.T("keys.encrypted_tag")
 		}
 		fmt.Printf("  %d) %s%s\n", i+1, key.Filename, encrypted)
-		fmt.Printf("     Path: %s\n", key.Path)
+		fmt.Printf("     %s\n", tildify(key.Path))
 		fmt.Println()
 	}
 
 	// Ask which keys to import
-	fmt.Println("Enter the numbers of keys to import (e.g., '1,3' or '1-3' or 'all'):")
-	selection, err := otp.PromptInput("Keys to import [all]: ")
+	fmt.Println(i18n.T("keys.select_hint"))
+	selection, err := otp.PromptInput(i18n.T("keys.select_prompt"))
 	if err != nil {
-		return fmt.Errorf("failed to read selection: %w", err)
+		return errors.New(i18n.T("keys.err_read_input", err))
 	}
 
 	// Trim and normalize input
@@ -83,18 +82,18 @@ func importSSHKeys() error {
 	}
 
 	if strings.ToLower(selection) == "none" || strings.ToLower(selection) == "skip" {
-		fmt.Println("Skipped key import")
+		fmt.Println(i18n.T("keys.skipped"))
 		return nil
 	}
 
 	// Parse selection
 	selectedIndices, err := parseSelection(selection, len(keys))
 	if err != nil {
-		return fmt.Errorf("invalid selection: %w", err)
+		return errors.New(i18n.T("keys.err_selection", err))
 	}
 
 	if len(selectedIndices) == 0 {
-		fmt.Println("No keys selected")
+		fmt.Println(i18n.T("keys.none_selected"))
 		return nil
 	}
 
@@ -107,21 +106,21 @@ func importSSHKeys() error {
 	// Load master key
 	mk, err := unlockMasterKeyErr(i18n.T("auth.reason_import_wizard"))
 	if err != nil {
-		return fmt.Errorf("failed to load master key: %w", err)
+		return err
 	}
 
 	// Import selected keys
 	fmt.Println()
-	fmt.Printf("Importing %d key(s)...\n", len(keysToImport))
+	fmt.Println(i18n.T("keys.importing", len(keysToImport)))
 	fmt.Println()
 	successCount := 0
 	for i, key := range keysToImport {
-		fmt.Printf("[%d/%d] Importing %s...\n", i+1, len(keysToImport), key.Filename)
+		fmt.Printf("[%d/%d] %s\n", i+1, len(keysToImport), key.Filename)
 
 		// Read key file
 		keyData, err := os.ReadFile(key.Path)
 		if err != nil {
-			fmt.Printf("  ❌ Failed to read key file: %v\n", err)
+			fmt.Println("  ❌ " + i18n.T("import.err_read_file", err))
 			continue
 		}
 
@@ -133,37 +132,37 @@ func importSSHKeys() error {
 			continue
 		}
 		if existing, ok, _ := store.FindByFingerprint(rec.Fingerprint); ok {
-			fmt.Printf("  ✓ Already imported as '%s', skipped\n", existing)
+			fmt.Println("  ✓ " + i18n.T("keys.already_imported", existing))
 			continue
 		}
 
 		// Prompt for alias with suggestion until it is valid and unused
 		alias, err := promptNewAlias(uniqueAlias(generateAlias(key.Filename)))
 		if err != nil {
-			fmt.Printf("  ❌ Failed to read alias: %v\n", err)
+			fmt.Println("  ❌ " + i18n.T("keys.err_read_input", err))
 			continue
 		}
 		rec.Alias = alias
 
 		// Save encrypted record
 		if err := store.SaveEncryptedRecord(rec, mk); err != nil {
-			fmt.Printf("  ❌ Failed to save key: %v\n", err)
+			fmt.Println("  ❌ " + i18n.T("keys.err_save", err))
 			continue
 		}
 
-		fmt.Printf("  ✓ Imported as '%s' (fingerprint: %s)\n", rec.Alias, rec.Fingerprint)
+		fmt.Println("  ✓ " + i18n.T("import.done", rec.Alias, rec.Fingerprint))
 		successCount++
 		handleOriginalKeyFile(key.Path, rec.Alias, "")
 	}
 
 	fmt.Println()
 	if successCount > 0 {
-		fmt.Printf("✓ Successfully imported %d/%d selected keys\n", successCount, len(keysToImport))
+		fmt.Println("✓ " + i18n.T("keys.imported_count", successCount, len(keysToImport)))
 		if metas, _ := store.ListMeta(); len(metas) >= 2 {
 			fmt.Println(i18n.T("setup.bind_hint"))
 		}
 	} else {
-		fmt.Println("⚠️  No keys were imported")
+		fmt.Println("⚠️  " + i18n.T("keys.none_imported"))
 	}
 
 	return nil
@@ -173,7 +172,7 @@ func importSSHKeys() error {
 func scanSSHDirectory(sshDir string) ([]*SSHKeyInfo, error) {
 	// Check if directory exists
 	if _, err := os.Stat(sshDir); os.IsNotExist(err) {
-		return nil, fmt.Errorf("SSH directory not found: %s", sshDir)
+		return nil, errors.New(i18n.T("keys.err_no_ssh_dir", sshDir))
 	}
 
 	// Standard SSH private key patterns
@@ -191,7 +190,7 @@ func scanSSHDirectory(sshDir string) ([]*SSHKeyInfo, error) {
 	// Read directory entries
 	entries, err := os.ReadDir(sshDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read SSH directory: %w", err)
+		return nil, errors.New(i18n.T("keys.err_read_ssh_dir", err))
 	}
 
 	// Scan for keys
@@ -322,7 +321,7 @@ func uniqueAlias(base string) string {
 // Empty input accepts the suggestion, which must itself be valid and unused.
 func promptNewAlias(suggested string) (string, error) {
 	for {
-		alias, err := otp.PromptInput(fmt.Sprintf("  Alias [%s]: ", suggested))
+		alias, err := otp.PromptInput("  " + i18n.T("keys.alias_prompt", suggested))
 		if err != nil {
 			return "", err
 		}
@@ -338,7 +337,7 @@ func promptNewAlias(suggested string) (string, error) {
 			return "", err
 		}
 		if taken {
-			fmt.Printf("  ❌ Alias '%s' is already used, choose another\n", alias)
+			fmt.Println("  ❌ " + i18n.T("keys.alias_taken", alias))
 			continue
 		}
 		return alias, nil
@@ -372,21 +371,21 @@ func parseSelection(selection string, total int) ([]int, error) {
 		if strings.Contains(part, "-") {
 			rangeParts := strings.Split(part, "-")
 			if len(rangeParts) != 2 {
-				return nil, fmt.Errorf("invalid range format: '%s'", part)
+				return nil, errors.New(i18n.T("keys.err_range", part))
 			}
 
 			start, err := strconv.Atoi(rangeParts[0])
 			if err != nil {
-				return nil, fmt.Errorf("invalid number in range: '%s' (error: %v)", rangeParts[0], err)
+				return nil, errors.New(i18n.T("keys.err_number", rangeParts[0]))
 			}
 
 			end, err := strconv.Atoi(rangeParts[1])
 			if err != nil {
-				return nil, fmt.Errorf("invalid number in range: '%s' (error: %v)", rangeParts[1], err)
+				return nil, errors.New(i18n.T("keys.err_number", rangeParts[1]))
 			}
 
 			if start < 1 || end > total || start > end {
-				return nil, fmt.Errorf("range %d-%d is out of bounds (valid range: 1-%d)", start, end, total)
+				return nil, errors.New(i18n.T("keys.err_range_bounds", start, end, total))
 			}
 
 			for i := start; i <= end; i++ {
@@ -400,11 +399,11 @@ func parseSelection(selection string, total int) ([]int, error) {
 			// Single number
 			num, err := strconv.Atoi(part)
 			if err != nil {
-				return nil, fmt.Errorf("invalid number: '%s' (error: %v)", part, err)
+				return nil, errors.New(i18n.T("keys.err_number", part))
 			}
 
 			if num < 1 || num > total {
-				return nil, fmt.Errorf("number %d is out of bounds (valid range: 1-%d)", num, total)
+				return nil, errors.New(i18n.T("keys.err_number_bounds", num, total))
 			}
 
 			idx := num - 1 // Convert to 0-based index
@@ -416,7 +415,7 @@ func parseSelection(selection string, total int) ([]int, error) {
 	}
 
 	if len(indices) == 0 {
-		return nil, fmt.Errorf("no valid keys selected")
+		return nil, errors.New(i18n.T("keys.none_selected"))
 	}
 
 	return indices, nil

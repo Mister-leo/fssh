@@ -2,6 +2,7 @@ package agentserver
 
 import (
     "crypto/x509"
+    "errors"
     "fmt"
     "net"
     "os"
@@ -36,7 +37,7 @@ func StartWithOptions(socketPath string, requireTouchPerSign bool, ttlSeconds in
     // 只创建一个 provider，预解锁与签名共享同一份缓存
     provider, err := auth.GetAuthProvider(ttlSeconds)
     if err != nil {
-        return fmt.Errorf("初始化认证提供者失败: %w", err)
+        return err
     }
 
     log.Info("认证模式", map[string]interface{}{
@@ -51,11 +52,15 @@ func StartWithOptions(socketPath string, requireTouchPerSign bool, ttlSeconds in
             Reason:   i18n.T("agent.otp_preunlock_reason"),
             Prompter: prompt.TTY{},
         }); err != nil {
-            return fmt.Errorf("OTP 认证失败: %w", err)
+            return err
         }
         fmt.Println("✓ " + i18n.T("agent.otp_preunlock_done"))
     }
 
+    // sockaddr_un.sun_path is 104 bytes on macOS, including the final NUL
+    if len(socketPath) > 103 {
+        return errors.New(i18n.T("agent.err_socket_too_long", socketPath, len(socketPath)))
+    }
     _ = os.Remove(socketPath)
     if err := os.MkdirAll(filepath.Dir(socketPath), 0700); err != nil {
         return err
@@ -110,11 +115,8 @@ func StartWithOptions(socketPath string, requireTouchPerSign bool, ttlSeconds in
     }()
 
     fmt.Println()
-    fmt.Println("✓ Agent 已启动")
-    fmt.Printf("Socket: %s\n", socketPath)
-    fmt.Println()
-    fmt.Println("请设置环境变量:")
-    fmt.Printf("  export SSH_AUTH_SOCK=%s\n", socketPath)
+    fmt.Println("✓ " + i18n.T("agent.started", socketPath))
+    fmt.Println(i18n.T("agent.started_hint"))
     fmt.Println()
 
     // Block until interrupted

@@ -84,7 +84,7 @@ func SetPassword(cfg *Config, password string, seed []byte) error {
 	}
 	w, err := sealSeed(password, seed)
 	if err != nil {
-		return fmt.Errorf("加密 OTP seed 失败: %w", err)
+		return fmt.Errorf("encrypt OTP seed: %w", err)
 	}
 	cfg.SeedSalt, cfg.SeedNonce, cfg.EncryptedSeed = w.Salt, w.Nonce, w.Ciphertext
 	return nil

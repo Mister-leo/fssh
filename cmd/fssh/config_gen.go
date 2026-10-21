@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fssh/internal/i18n"
     "bufio"
     "errors"
     "flag"
@@ -21,9 +22,9 @@ func cmdConfigGen() {
     overwrite := fs.Bool("overwrite", false, "overwrite existing host block")
     globalAlgos := fs.Bool("global-algos", false, "write RSA-SHA2 algorithms to Host *")
     fs.Parse(os.Args[2:])
-    if *host == "" { fatal(errors.New("host is required")) }
+    if *host == "" { fatal(errors.New(i18n.T("configgen.usage"))) }
     cfg, err := config.Load()
-    if err != nil { fatal(fmt.Errorf("load ~/.fssh/config.json: %w", err)) }
+    if err != nil { fatal(fmt.Errorf(i18n.T("cli.config_invalid"), err)) }
     block := buildHostBlock(*host, *user, *port, cfg.Socket)
     if !*write {
         fmt.Print(block)
@@ -45,7 +46,7 @@ func cmdConfigGen() {
         out = ensureGlobalAlgos(out)
     }
     if err := os.WriteFile(p, []byte(out), 0600); err != nil { fatal(err) }
-    fmt.Println("wrote", p)
+    fmt.Println("✓ " + i18n.T("configgen.wrote", p))
 }
 
 func buildHostBlock(host, user, port, sock string) string {

@@ -759,4 +759,1072 @@ var messages = map[string]map[Lang]string{
 		EN: "%d problem(s), %d warning(s)",
 		ZH: "%d 个问题，%d 个警告",
 	},
+
+	// ---- setup wizard ----
+	"setup.err_home": {
+		EN: "cannot find the home directory: %v",
+		ZH: "无法获取用户主目录: %v",
+	},
+	"keys.none_found": {
+		EN: "No SSH private keys found in ~/.ssh/. Import later with `fssh import --alias <name> --file <path>`, or create one with `fssh keygen <name>`.",
+		ZH: "~/.ssh/ 中没有找到 SSH 私钥。之后可用 `fssh import --alias <名字> --file <路径>` 导入，或用 `fssh keygen <名字>` 生成。",
+	},
+	"keys.found": {
+		EN: "Found %d SSH private key(s):",
+		ZH: "找到 %d 个 SSH 私钥:",
+	},
+	"keys.encrypted_tag": {
+		EN: "[passphrase protected]",
+		ZH: "[有密码保护]",
+	},
+	"keys.select_hint": {
+		EN: "Enter the numbers of the keys to import (e.g. 1,3 or 1-3), all, or none:",
+		ZH: "输入要导入的密钥编号（例如 1,3 或 1-3），all 表示全部，none 表示跳过:",
+	},
+	"keys.select_prompt": {
+		EN: "Keys to import [all]: ",
+		ZH: "要导入的密钥 [all]: ",
+	},
+	"keys.err_read_input": {
+		EN: "could not read input: %v",
+		ZH: "读取输入失败: %v",
+	},
+	"keys.skipped": {
+		EN: "Skipped key import",
+		ZH: "已跳过导入",
+	},
+	"keys.err_selection": {
+		EN: "invalid selection: %v",
+		ZH: "选择无效: %v",
+	},
+	"keys.none_selected": {
+		EN: "No keys selected",
+		ZH: "未选择任何密钥",
+	},
+	"keys.importing": {
+		EN: "Importing %d key(s)...",
+		ZH: "正在导入 %d 个密钥...",
+	},
+	"keys.already_imported": {
+		EN: "already imported as %s, skipped",
+		ZH: "已导入为 %s，跳过",
+	},
+	"keys.err_save": {
+		EN: "could not save the key: %v",
+		ZH: "保存密钥失败: %v",
+	},
+	"keys.imported_count": {
+		EN: "Imported %d of %d selected key(s)",
+		ZH: "已导入 %d/%d 个所选密钥",
+	},
+	"keys.none_imported": {
+		EN: "No keys were imported",
+		ZH: "没有导入任何密钥",
+	},
+	"keys.err_no_ssh_dir": {
+		EN: "SSH directory not found: %s",
+		ZH: "找不到 SSH 目录: %s",
+	},
+	"keys.err_read_ssh_dir": {
+		EN: "cannot read the SSH directory: %v",
+		ZH: "读取 SSH 目录失败: %v",
+	},
+	"keys.alias_prompt": {
+		EN: "Alias [%s]: ",
+		ZH: "别名 [%s]: ",
+	},
+	"keys.alias_taken": {
+		EN: "alias %s is already used, choose another",
+		ZH: "别名 %s 已被使用，请换一个",
+	},
+	"keys.err_range": {
+		EN: "invalid range: %s",
+		ZH: "范围格式无效: %s",
+	},
+	"keys.err_number": {
+		EN: "invalid number: %s",
+		ZH: "编号无效: %s",
+	},
+	"keys.err_range_bounds": {
+		EN: "range %d-%d is out of bounds (1-%d)",
+		ZH: "范围 %d-%d 超出有效编号（1-%d）",
+	},
+	"keys.err_number_bounds": {
+		EN: "number %d is out of bounds (1-%d)",
+		ZH: "编号 %d 超出有效范围（1-%d）",
+	},
+	"binary.err_path": {
+		EN: "cannot locate the fssh executable: %v",
+		ZH: "无法定位 fssh 可执行文件: %v",
+	},
+	"binary.installed": {
+		EN: "fssh is already installed at %s",
+		ZH: "fssh 已安装在 %s",
+	},
+	"binary.brew": {
+		EN: "Installed by Homebrew (%s); upgrade with brew upgrade fssh",
+		ZH: "由 Homebrew 安装（%s），用 brew upgrade fssh 升级",
+	},
+	"binary.exists": {
+		EN: "another fssh exists at %s",
+		ZH: "%s 已存在另一个 fssh",
+	},
+	"binary.replace": {
+		EN: "Replace it with this version?",
+		ZH: "用当前版本替换它吗？",
+	},
+	"binary.skipped": {
+		EN: "Skipped installation",
+		ZH: "已跳过安装",
+	},
+	"binary.installing": {
+		EN: "Installing fssh to %s (requires sudo)...",
+		ZH: "正在安装 fssh 到 %s（需要 sudo）...",
+	},
+	"binary.err_install": {
+		EN: "installation failed: %v (install manually: sudo cp fssh /usr/local/bin/)",
+		ZH: "安装失败: %v（可手动安装: sudo cp fssh /usr/local/bin/）",
+	},
+	"binary.done": {
+		EN: "Installed fssh to %s",
+		ZH: "已安装 fssh 到 %s",
+	},
+	"launchd.replacing": {
+		EN: "Updating the existing auto-start configuration",
+		ZH: "正在更新已有的开机自启配置",
+	},
+	"launchd.err": {
+		EN: "auto-start setup failed: %v",
+		ZH: "配置开机自启失败: %v",
+	},
+	"launchd.created": {
+		EN: "Created %s",
+		ZH: "已创建 %s",
+	},
+	"launchd.loaded": {
+		EN: "The agent will start automatically at login",
+		ZH: "agent 将在登录时自动启动",
+	},
+	"agentstart.running": {
+		EN: "The fssh agent is running",
+		ZH: "fssh agent 正在运行",
+	},
+	"agentstart.waiting": {
+		EN: "Waiting for the agent to start...",
+		ZH: "等待 agent 启动...",
+	},
+	"agentstart.timeout": {
+		EN: "the agent did not start within 10 seconds; check ~/Library/Logs/fssh/agent.log or run `fssh doctor`",
+		ZH: "agent 10 秒内未启动；请查看 ~/Library/Logs/fssh/agent.log 或运行 `fssh doctor`",
+	},
+	"sshsetup.err": {
+		EN: "could not update ~/.ssh/config: %v",
+		ZH: "更新 ~/.ssh/config 失败: %v",
+	},
+	"sshsetup.other_agent": {
+		EN: "~/.ssh/config already uses another agent: %s",
+		ZH: "~/.ssh/config 已在使用另一个 agent: %s",
+	},
+	"sshsetup.other_agent_confirm": {
+		EN: "Let the fssh agent take precedence for all hosts?",
+		ZH: "让 fssh agent 对所有主机优先生效吗？",
+	},
+	"sshsetup.skipped": {
+		EN: "Skipped ~/.ssh/config",
+		ZH: "已跳过修改 ~/.ssh/config",
+	},
+	"sshsetup.explain": {
+		EN: "To make ssh use fssh for every host, a marked block is added to the top of ~/.ssh/config (a backup is kept).",
+		ZH: "为了让 ssh 对所有主机使用 fssh，将在 ~/.ssh/config 开头加入一个带标记的配置块（会保留备份）。",
+	},
+	"sshsetup.confirm": {
+		EN: "Update ~/.ssh/config?",
+		ZH: "修改 ~/.ssh/config 吗？",
+	},
+	"sshsetup.done": {
+		EN: "Updated ~/.ssh/config",
+		ZH: "已更新 ~/.ssh/config",
+	},
+
+	// ---- delivery (M4) ----
+	"cmd.backup": {
+		EN: "Back up all keys to an encrypted file",
+		ZH: "把所有密钥备份到加密文件",
+	},
+	"cmd.restore": {
+		EN: "Restore keys from a backup file",
+		ZH: "从备份文件恢复密钥",
+	},
+	"cmd.mode": {
+		EN: "Show or switch the auth mode (keys are kept)",
+		ZH: "查看或切换认证模式（保留所有密钥）",
+	},
+	"cmd.uninstall": {
+		EN: "Remove fssh from ssh config, auto-start and shell (--purge also deletes keys)",
+		ZH: "从 ssh 配置、开机自启和 shell 中移除 fssh（--purge 同时删除密钥）",
+	},
+	"agent.err_socket_too_long": {
+		EN: "socket path is %s (%d bytes); macOS allows at most 103 bytes. Set a shorter \"socket\" in ~/.fssh/config.json",
+		ZH: "socket 路径 %s 长度为 %d 字节，macOS 最多允许 103 字节。请在 ~/.fssh/config.json 中设置更短的 \"socket\"",
+	},
+	"auth.reason_backup": {
+		EN: "back up all fssh keys",
+		ZH: "备份所有 fssh 密钥",
+	},
+	"auth.reason_restore": {
+		EN: "restore %d key(s) into fssh",
+		ZH: "向 fssh 恢复 %d 个密钥",
+	},
+	"auth.reason_mode_switch": {
+		EN: "switch fssh to %s mode",
+		ZH: "将 fssh 切换到 %s 模式",
+	},
+	"auth.reason_mode_verify": {
+		EN: "confirm the new fssh master key",
+		ZH: "确认新的 fssh 主密钥",
+	},
+	"backup.explain": {
+		EN: "The backup holds every key and is protected by a backup passphrase (independent of Touch ID/OTP). It can be restored on another Mac with `fssh restore`. Keep the passphrase safe: without it the backup cannot be opened.",
+		ZH: "备份包含所有密钥，由单独的备份密码保护（与 Touch ID/OTP 无关），可在其他 Mac 上用 `fssh restore` 恢复。请牢记备份密码，丢失将无法打开备份。",
+	},
+	"backup.prompt_passphrase": {
+		EN: "Backup passphrase (at least 12 characters): ",
+		ZH: "设置备份密码（至少 12 位）: ",
+	},
+	"backup.done": {
+		EN: "Backed up %d key(s) to %s",
+		ZH: "已备份 %d 个密钥到 %s",
+	},
+	"restore.usage": {
+		EN: "usage: fssh restore <backup file> [--force]",
+		ZH: "用法: fssh restore <备份文件> [--force]",
+	},
+	"restore.prompt_passphrase": {
+		EN: "Backup passphrase: ",
+		ZH: "备份密码: ",
+	},
+	"restore.err_passphrase": {
+		EN: "wrong backup passphrase, or the file is damaged",
+		ZH: "备份密码错误，或文件已损坏",
+	},
+	"restore.skip_same": {
+		EN: "skip %s: already imported as %s",
+		ZH: "跳过 %s：已导入为 %s",
+	},
+	"restore.skip_alias": {
+		EN: "skip %s: alias already used by another key (use --force to overwrite)",
+		ZH: "跳过 %s：该别名已被另一把密钥使用（加 --force 覆盖）",
+	},
+	"restore.nothing": {
+		EN: "Nothing to restore",
+		ZH: "没有需要恢复的密钥",
+	},
+	"restore.done": {
+		EN: "Restored %d of %d key(s)",
+		ZH: "已恢复 %d/%d 个密钥",
+	},
+	"export.usage": {
+		EN: "usage: fssh export --alias <alias> --out <file> [--format openssh|pkcs8] [--ask-passphrase]",
+		ZH: "用法: fssh export --alias <别名> --out <文件> [--format openssh|pkcs8] [--ask-passphrase]",
+	},
+	"export.err_format": {
+		EN: "unknown --format %q: use openssh or pkcs8",
+		ZH: "--format %q 无效：可选 openssh 或 pkcs8",
+	},
+	"export.err_exists": {
+		EN: "%s already exists (use --force to overwrite)",
+		ZH: "%s 已存在（加 --force 覆盖）",
+	},
+	"export.err_pkcs8_passphrase": {
+		EN: "encrypted PKCS#8 export is not supported; use --format openssh with a passphrase",
+		ZH: "不支持导出加密的 PKCS#8；请使用 --format openssh 并设置密码",
+	},
+	"export.prompt_passphrase": {
+		EN: "Passphrase for the exported file (Enter for none): ",
+		ZH: "为导出文件设置密码（直接回车表示不加密）: ",
+	},
+	"export.done": {
+		EN: "Exported %s to %s (OpenSSH format, passphrase protected)",
+		ZH: "已导出 %s 到 %s（OpenSSH 格式，有密码保护）",
+	},
+	"export.done_plain": {
+		EN: "Exported %s to %s. ⚠️  The file is an unencrypted private key: store it safely and delete it when no longer needed.",
+		ZH: "已导出 %s 到 %s。⚠️  该文件是未加密的私钥，请妥善保管，用完后删除。",
+	},
+	"init.err_mode": {
+		EN: "unsupported auth mode %q (use touchid or otp)",
+		ZH: "不支持的认证模式 %q（可选 touchid 或 otp）",
+	},
+	"init.already": {
+		EN: "fssh is already initialized (%s mode)",
+		ZH: "fssh 已初始化（%s 模式）",
+	},
+	"init.already_other": {
+		EN: "fssh is already initialized in %s mode. Switch with `fssh mode switch %s` (keeps your keys), or start over with `fssh init --force`",
+		ZH: "fssh 已以 %s 模式初始化。可用 `fssh mode switch %s` 切换（保留密钥），或用 `fssh init --force` 全部重来",
+	},
+	"init.force_reset": {
+		EN: "--force: starting over; existing keys are moved aside",
+		ZH: "--force：全部重来，现有密钥将被移到一旁",
+	},
+	"init.orphans": {
+		EN: "Found %d key(s) without a usable master key; they are moved aside",
+		ZH: "发现 %d 个已没有可用主密钥的密钥，将其移到一旁",
+	},
+	"init.keychain_dialog_hint": {
+		EN: "macOS may ask whether fssh may use the Keychain: click \"Always Allow\" (or enter your login password).",
+		ZH: "macOS 可能询问是否允许 fssh 使用钥匙串：请点击「始终允许」（或输入登录密码）。",
+	},
+	"init.keychain_failed": {
+		EN: "❌ Could not store the master key in the Keychain. If you clicked \"Deny\", run `fssh init` again and allow access.",
+		ZH: "❌ 无法把主密钥存入钥匙串。如果点了「拒绝」，请重新运行 `fssh init` 并允许访问。",
+	},
+	"init.touchid_done": {
+		EN: "Master key created and protected by Touch ID",
+		ZH: "已创建主密钥，由 Touch ID 保护",
+	},
+	"init.otp_title": {
+		EN: "Set up OTP: choose a password, then add the secret to an authenticator app.",
+		ZH: "设置 OTP：先设置密码，再把密钥添加到验证器 App。",
+	},
+	"init.otp_verify_code": {
+		EN: "Enter the %d-digit code shown in your authenticator app to confirm: ",
+		ZH: "输入验证器 App 中显示的 %d 位验证码以确认: ",
+	},
+	"init.otp_verify_failed": {
+		EN: "the authenticator app did not produce a valid code; nothing was changed. Check the secret and the phone's clock, then try again",
+		ZH: "验证器 App 生成的验证码不正确，未做任何更改。请检查密钥和手机时间后重试",
+	},
+	"mode.usage": {
+		EN: "usage: fssh mode switch <touchid|otp>",
+		ZH: "用法: fssh mode switch <touchid|otp>",
+	},
+	"mode.current": {
+		EN: "Current auth mode: %s",
+		ZH: "当前认证模式: %s",
+	},
+	"mode.already": {
+		EN: "fssh already uses %s mode",
+		ZH: "fssh 已经是 %s 模式",
+	},
+	"mode.switched": {
+		EN: "Switched to %s mode; %d key(s) re-encrypted",
+		ZH: "已切换到 %s 模式，重新加密了 %d 个密钥",
+	},
+	"mode.touchid_password_fallback": {
+		EN: "Touch ID is not usable on this Mac right now (no sensor, no enrolled finger, or lid closed). Touch ID mode then asks for your macOS login password instead.",
+		ZH: "此 Mac 当前无法使用 Touch ID（没有传感器、未录入指纹或合盖使用）。Touch ID 模式将改为询问 macOS 登录密码。",
+	},
+	"otp.retry_code_used": {
+		EN: "This code was already used. Wait for the next one.",
+		ZH: "该验证码已使用过，请等待下一个。",
+	},
+	"reset.warning": {
+		EN: "Starting over makes these %d key(s) unusable: %s",
+		ZH: "全部重来后，以下 %d 个密钥将无法再使用: %s",
+	},
+	"reset.offer_backup": {
+		EN: "Back them up first (recommended)?",
+		ZH: "先备份它们吗（推荐）？",
+	},
+	"reset.confirm": {
+		EN: "Type DELETE to continue: ",
+		ZH: "输入 DELETE 继续: ",
+	},
+	"reset.moved": {
+		EN: "Old data moved to: %s",
+		ZH: "旧数据已移到: %s",
+	},
+	"setup.welcome": {
+		EN: "Welcome to the fssh setup wizard. Steps:",
+		ZH: "欢迎使用 fssh 设置向导，将依次完成:",
+	},
+	"setup.step": {
+		EN: "Step",
+		ZH: "步骤",
+	},
+	"setup.step_auth": {
+		EN: "Authentication (Touch ID or OTP)",
+		ZH: "认证方式（Touch ID 或 OTP）",
+	},
+	"setup.step_binary": {
+		EN: "Install fssh to /usr/local/bin",
+		ZH: "安装 fssh 到 /usr/local/bin",
+	},
+	"setup.step_import": {
+		EN: "Import SSH keys from ~/.ssh",
+		ZH: "从 ~/.ssh 导入 SSH 密钥",
+	},
+	"setup.step_launchd": {
+		EN: "Start the agent at login",
+		ZH: "登录时自动启动 agent",
+	},
+	"setup.step_agent": {
+		EN: "Start the agent",
+		ZH: "启动 agent",
+	},
+	"setup.step_sshconfig": {
+		EN: "Make ssh use fssh",
+		ZH: "让 ssh 使用 fssh",
+	},
+	"setup.step_shellenv": {
+		EN: "Shell environment (optional)",
+		ZH: "Shell 环境变量（可选）",
+	},
+	"setup.binary_failed": {
+		EN: "installation failed: %v",
+		ZH: "安装失败: %v",
+	},
+	"setup.import_failed": {
+		EN: "key import failed: %v (import later with fssh import)",
+		ZH: "导入密钥失败: %v（之后可用 fssh import 导入）",
+	},
+	"setup.launchd_failed": {
+		EN: "auto-start setup failed: %v",
+		ZH: "配置开机自启失败: %v",
+	},
+	"setup.agent_failed": {
+		EN: "%v",
+		ZH: "%v",
+	},
+	"setup.sshconfig_failed": {
+		EN: "%v",
+		ZH: "%v",
+	},
+	"setup.shellenv_failed": {
+		EN: "could not update the shell startup file: %v",
+		ZH: "更新 shell 配置文件失败: %v",
+	},
+	"setup.already": {
+		EN: "fssh is already initialized (%s mode, %d key(s)).",
+		ZH: "fssh 已初始化（%s 模式，%d 个密钥）。",
+	},
+	"setup.already_choices": {
+		EN: "  1) Keep the current setup and continue [default]\n  2) Switch auth mode (keeps all keys)\n  3) Start over (current keys become unusable)\n  4) Exit",
+		ZH: "  1) 保留当前配置，继续后面的步骤 [默认]\n  2) 切换认证模式（保留所有密钥）\n  3) 全部重来（现有密钥将无法使用）\n  4) 退出",
+	},
+	"setup.keep": {
+		EN: "Keeping %s mode",
+		ZH: "保留 %s 模式",
+	},
+	"setup.cancelled": {
+		EN: "Setup cancelled",
+		ZH: "已取消设置",
+	},
+	"setup.touchid_available": {
+		EN: "Touch ID is available",
+		ZH: "检测到可用的 Touch ID",
+	},
+	"setup.touchid_unavailable": {
+		EN: "Touch ID is not usable on this Mac right now. Touch ID mode still works and asks for your macOS login password instead.",
+		ZH: "此 Mac 当前无法使用 Touch ID。Touch ID 模式仍然可用，会改为询问 macOS 登录密码。",
+	},
+	"setup.mode_choices": {
+		EN: "  1) Touch ID - master key in the Keychain, unlocked by fingerprint (or login password) [recommended]\n  2) OTP - password + authenticator app codes",
+		ZH: "  1) Touch ID - 主密钥存于钥匙串，用指纹（或登录密码）解锁 [推荐]\n  2) OTP - 密码 + 验证器 App 验证码",
+	},
+	"setup.invalid_choice": {
+		EN: "Please enter 1 or 2.",
+		ZH: "请输入 1 或 2。",
+	},
+	"setup.complete": {
+		EN: "Setup complete 🎉",
+		ZH: "设置完成 🎉",
+	},
+	"setup.complete_not_connected": {
+		EN: "ssh is not yet configured to use fssh. Add `IdentityAgent %s` under `Host *` in ~/.ssh/config, or run `fssh doctor` for details.",
+		ZH: "ssh 还没有配置使用 fssh。请在 ~/.ssh/config 的 `Host *` 下加入 `IdentityAgent %s`，或运行 `fssh doctor` 查看详情。",
+	},
+	"setup.next_steps": {
+		EN: "Next:\n  ssh your-server          # should ask for Touch ID / OTP\n  fssh doctor              # check the setup\n  fssh bind <host> <alias> # pin a host to one key\n  fssh backup              # keep an encrypted backup of your keys",
+		ZH: "接下来:\n  ssh your-server          # 应弹出 Touch ID / OTP 验证\n  fssh doctor              # 检查配置\n  fssh bind <主机> <别名>   # 让主机只使用指定密钥\n  fssh backup              # 备份密钥到加密文件",
+	},
+	"shellenv.optional": {
+		EN: "ssh already uses fssh through ~/.ssh/config. Exporting SSH_AUTH_SOCK additionally lets ssh-add and tools that ignore ~/.ssh/config use fssh, but hides any other ssh-agent from new shells.",
+		ZH: "ssh 已通过 ~/.ssh/config 使用 fssh。另外设置 SSH_AUTH_SOCK 可以让 ssh-add 以及不读取 ~/.ssh/config 的工具也使用 fssh，但新开的终端将不再使用其他 ssh-agent。",
+	},
+	"shellenv.needed": {
+		EN: "ssh is not configured through ~/.ssh/config, so SSH_AUTH_SOCK is needed for ssh to use fssh.",
+		ZH: "ssh 没有通过 ~/.ssh/config 接入 fssh，需要设置 SSH_AUTH_SOCK 才能使用 fssh。",
+	},
+	"shellenv.confirm": {
+		EN: "Add SSH_AUTH_SOCK to %s?",
+		ZH: "把 SSH_AUTH_SOCK 写入 %s 吗？",
+	},
+	"shellenv.done": {
+		EN: "Added to %s (takes effect in new terminal windows)",
+		ZH: "已写入 %s（新打开的终端生效）",
+	},
+	"shellenv.already": {
+		EN: "SSH_AUTH_SOCK is already set in %s",
+		ZH: "%s 中已设置 SSH_AUTH_SOCK",
+	},
+	"shellenv.manual": {
+		EN: "To set it yourself: export SSH_AUTH_SOCK=%s",
+		ZH: "如需手动设置: export SSH_AUTH_SOCK=%s",
+	},
+	"uninstall.plan": {
+		EN: "This removes fssh from: auto-start, ~/.ssh/config (managed block and key bindings) and shell startup files. Your keys in ~/.fssh and the master key are kept.",
+		ZH: "将从以下位置移除 fssh：开机自启、~/.ssh/config（托管配置块和密钥绑定）、shell 配置文件。~/.fssh 中的密钥和主密钥会保留。",
+	},
+	"uninstall.plan_purge": {
+		EN: "--purge: ALL keys in ~/.fssh and the master key will be deleted permanently.",
+		ZH: "--purge：~/.fssh 中的所有密钥和主密钥将被永久删除。",
+	},
+	"uninstall.confirm": {
+		EN: "Continue?",
+		ZH: "继续吗？",
+	},
+	"uninstall.purge_warning": {
+		EN: "%d key(s) will be deleted permanently.",
+		ZH: "%d 个密钥将被永久删除。",
+	},
+	"uninstall.launchd_removed": {
+		EN: "Removed auto-start",
+		ZH: "已移除开机自启",
+	},
+	"uninstall.sshconfig_block": {
+		EN: "Removed the fssh block from ~/.ssh/config",
+		ZH: "已从 ~/.ssh/config 移除 fssh 配置块",
+	},
+	"uninstall.sshconfig_hosts": {
+		EN: "Removed fssh settings from hosts: %s",
+		ZH: "已移除以下主机的 fssh 设置: %s",
+	},
+	"uninstall.shellenv": {
+		EN: "Removed SSH_AUTH_SOCK from %s",
+		ZH: "已从 %s 移除 SSH_AUTH_SOCK",
+	},
+	"uninstall.purged": {
+		EN: "Deleted %s and the master key",
+		ZH: "已删除 %s 和主密钥",
+	},
+	"uninstall.kept": {
+		EN: "Kept %s and the master key. Reinstall to use them again, or run `fssh uninstall --purge` to delete them.",
+		ZH: "已保留 %s 和主密钥。重新安装即可继续使用；如需删除请运行 `fssh uninstall --purge`。",
+	},
+	"uninstall.binary": {
+		EN: "Finally remove the program: sudo rm %s",
+		ZH: "最后删除程序本身: sudo rm %s",
+	},
+	"uninstall.binary_brew": {
+		EN: "Finally remove the program: brew uninstall fssh",
+		ZH: "最后删除程序本身: brew uninstall fssh",
+	},
+
+	// ---- interactive shell ----
+	"shell.1_no_proxy": {
+		EN: "  1) No proxy",
+		ZH: "  1) 不使用代理",
+	},
+	"shell.1_use_fssh_agent": {
+		EN: "  1) Use fssh agent",
+		ZH: "  1) 使用 fssh agent",
+	},
+	"shell.1_use_fssh_agent_recommended": {
+		EN: "  1) Use fssh agent (recommended)",
+		ZH: "  1) 使用 fssh agent（推荐）",
+	},
+	"shell.2_direct_identityfile": {
+		EN: "  2) Direct IdentityFile",
+		ZH: "  2) 直接指定 IdentityFile",
+	},
+	"shell.2_direct_identityfile_path": {
+		EN: "  2) Direct IdentityFile path",
+		ZH: "  2) 直接指定 IdentityFile 路径",
+	},
+	"shell.2_socks5_proxy": {
+		EN: "  2) SOCKS5 proxy",
+		ZH: "  2) SOCKS5 代理",
+	},
+	"shell.3_none": {
+		EN: "  3) None",
+		ZH: "  3) 不使用",
+	},
+	"shell.3_none_password_authentication": {
+		EN: "  3) None (password authentication)",
+		ZH: "  3) 不使用（密码登录）",
+	},
+	"shell.3_ssh_jump_host": {
+		EN: "  3) SSH jump host",
+		ZH: "  3) SSH 跳板机",
+	},
+	"shell.3_ssh_jump_host_proxyjump": {
+		EN: "  3) SSH jump host (ProxyJump)",
+		ZH: "  3) SSH 跳板机（ProxyJump）",
+	},
+	"shell.4_custom_proxycommand": {
+		EN: "  4) Custom ProxyCommand",
+		ZH: "  4) 自定义 ProxyCommand",
+	},
+	"shell.add_add_new_ssh_host": {
+		EN: "  add               - Add new SSH host",
+		ZH: "  add               - 添加主机",
+	},
+	"shell.add_new_ssh_host": {
+		EN: "\n=== Add New SSH Host ===",
+		ZH: "\n=== 添加主机 ===",
+	},
+	"shell.arguments_are_passed_to_ssh_e": {
+		EN: "                      arguments are passed to ssh (e.g. connect me@1.2.3.4 -p 2222)",
+		ZH: "                      会原样传给 ssh（例如 connect me@1.2.3.4 -p 2222）",
+	},
+	"shell.backup_created": {
+		EN: "✓ Backup created\n",
+		ZH: "✓ 已创建备份\n",
+	},
+	"shell.backup_created_2": {
+		EN: "✓ Backup created",
+		ZH: "✓ 已创建备份",
+	},
+	"shell.cancelled": {
+		EN: "Cancelled",
+		ZH: "已取消",
+	},
+	"shell.change_identity_configuration_y_n": {
+		EN: "\nChange identity configuration? [y/N]: ",
+		ZH: "\n修改私钥配置？[y/N]: ",
+	},
+	"shell.change_proxy_configuration_y_n": {
+		EN: "\nChange proxy configuration? [y/N]: ",
+		ZH: "\n修改代理配置？[y/N]: ",
+	},
+	"shell.choice": {
+		EN: "Choice: ",
+		ZH: "请选择: ",
+	},
+	"shell.choice_1": {
+		EN: "Choice [1]: ",
+		ZH: "请选择 [1]: ",
+	},
+	"shell.commands": {
+		EN: "Commands:",
+		ZH: "命令:",
+	},
+	"shell.connect_host_ssh_args_connect_to": {
+		EN: "  connect <host> [ssh args] - Connect to host; unknown hosts and extra",
+		ZH: "  connect <主机> [ssh 参数] - 连接主机；不在配置中的主机和额外参数",
+	},
+	"shell.create_it_now_y_n": {
+		EN: "Create it now? [Y/n]: ",
+		ZH: "现在创建？[Y/n]: ",
+	},
+	"shell.defined_in_s_read_only_in": {
+		EN: "Defined in: %s (read-only in fssh)\n",
+		ZH: "定义于: %s（fssh 中只读）\n",
+	},
+	"shell.delete_host_delete_host": {
+		EN: "  delete <host>     - Delete host",
+		ZH: "  delete <主机>     - 删除主机",
+	},
+	"shell.delete_host_s": {
+		EN: "\n=== Delete Host: %s ===\n",
+		ZH: "\n=== 删除主机: %s ===\n",
+	},
+	"shell.edit_global_configuration_host": {
+		EN: "\n=== Edit Global Configuration (Host *) ===",
+		ZH: "\n=== 编辑全局配置（Host *）===",
+	},
+	"shell.edit_host_edit_existing_host": {
+		EN: "  edit <host>       - Edit existing host",
+		ZH: "  edit <主机>       - 编辑主机",
+	},
+	"shell.edit_host_s": {
+		EN: "\n=== Edit Host: %s ===\n",
+		ZH: "\n=== 编辑主机: %s ===\n",
+	},
+	"shell.empty": {
+		EN: "  (empty)",
+		ZH: "  （空）",
+	},
+	"shell.error_host_alias_is_required": {
+		EN: "Error: Host alias is required",
+		ZH: "错误：必须填写主机别名",
+	},
+	"shell.error_hostname_is_required": {
+		EN: "Error: Hostname is required",
+		ZH: "错误：必须填写主机名",
+	},
+	"shell.example": {
+		EN: "\nExample:",
+		ZH: "\n示例:",
+	},
+	"shell.exit_quit_exit_shell": {
+		EN: "  exit / quit       - Exit shell",
+		ZH: "  exit / quit       - 退出",
+	},
+	"shell.failed_to_delete_w": {
+		EN: "failed to delete: %w",
+		ZH: "删除失败: %w",
+	},
+	"shell.failed_to_load_global_config_w": {
+		EN: "failed to load global config: %w",
+		ZH: "读取全局配置失败: %w",
+	},
+	"shell.failed_to_save_w": {
+		EN: "failed to save: %w",
+		ZH: "保存失败: %w",
+	},
+	"shell.failed_to_set_option_w": {
+		EN: "failed to set option: %w",
+		ZH: "设置选项失败: %w",
+	},
+	"shell.failed_to_unset_option_w": {
+		EN: "failed to unset option: %w",
+		ZH: "删除选项失败: %w",
+	},
+	"shell.fssh_key_s_identitiesonly_s": {
+		EN: "fssh key: %s (IdentitiesOnly %s)\n",
+		ZH: "fssh 密钥: %s（IdentitiesOnly %s）\n",
+	},
+	"shell.global_configuration_updated": {
+		EN: "\n✓ Global configuration updated",
+		ZH: "\n✓ 已更新全局配置",
+	},
+	"shell.global_edit_edit_global_config_interactively": {
+		EN: "    global edit           - Edit global config interactively",
+		ZH: "    global edit           - 交互式编辑全局配置",
+	},
+	"shell.global_edit_edit_global_config_interactively_2": {
+		EN: "  global edit           - Edit global config interactively",
+		ZH: "  global edit           - 交互式编辑全局配置",
+	},
+	"shell.global_set_key_value_set_a": {
+		EN: "    global set <key> <value> - Set a single option",
+		ZH: "    global set <选项> <值> - 设置单个选项",
+	},
+	"shell.global_set_key_value_set_a_2": {
+		EN: "  global set <key> <value> - Set a single option",
+		ZH: "  global set <选项> <值> - 设置单个选项",
+	},
+	"shell.global_show_display_current_global_config": {
+		EN: "    global show           - Display current global config",
+		ZH: "    global show           - 查看全局配置",
+	},
+	"shell.global_show_display_current_global_config_2": {
+		EN: "  global show           - Display current global config",
+		ZH: "  global show           - 查看全局配置",
+	},
+	"shell.global_show_edit_set_unset_manage": {
+		EN: "  global [show|edit|set|unset] - Manage global SSH config (Host *)",
+		ZH: "  global [show|edit|set|unset] - 管理全局配置（Host *）",
+	},
+	"shell.global_ssh_configuration_host": {
+		EN: "\n=== Global SSH Configuration (Host *) ===",
+		ZH: "\n=== 全局 SSH 配置（Host *）===",
+	},
+	"shell.global_unset_key_remove_a_single": {
+		EN: "    global unset <key>    - Remove a single option",
+		ZH: "    global unset <选项>   - 删除单个选项",
+	},
+	"shell.global_unset_key_remove_a_single_2": {
+		EN: "  global unset <key>    - Remove a single option",
+		ZH: "  global unset <选项>   - 删除单个选项",
+	},
+	"shell.help_show_this_help": {
+		EN: "  help              - Show this help",
+		ZH: "  help              - 显示帮助",
+	},
+	"shell.host_alias_e_g_myserver": {
+		EN: "Host alias (e.g., myserver): ",
+		ZH: "主机别名（例如 myserver）: ",
+	},
+	"shell.host_block_does_not_exist": {
+		EN: "\nHost * block does not exist.",
+		ZH: "\nHost * 配置块不存在。",
+	},
+	"shell.host_not_found_s": {
+		EN: "host not found: %s",
+		ZH: "找不到主机: %s",
+	},
+	"shell.host_not_found_w": {
+		EN: "host not found: %w",
+		ZH: "找不到主机: %w",
+	},
+	"shell.host_s_added_to_ssh_config": {
+		EN: "\n✓ Host '%s' added to ~/.ssh/config\n",
+		ZH: "\n✓ 已将主机 %s 添加到 ~/.ssh/config\n",
+	},
+	"shell.host_s_deleted_from_ssh_config": {
+		EN: "\n✓ Host '%s' deleted from ~/.ssh/config\n",
+		ZH: "\n✓ 已从 ~/.ssh/config 删除主机 %s\n",
+	},
+	"shell.host_s_is_defined_in_s": {
+		EN: "host %s is defined in %s; edit that file directly",
+		ZH: "主机 %s 定义在 %s 中，请直接编辑该文件",
+	},
+	"shell.host_s_updated": {
+		EN: "\n✓ Host '%s' updated\n",
+		ZH: "\n✓ 已更新主机 %s\n",
+	},
+	"shell.hostname_or_ip": {
+		EN: "Hostname or IP: ",
+		ZH: "主机名或 IP: ",
+	},
+	"shell.hostname_s_no_hostname_ssh_connects": {
+		EN: "Hostname: %s (no HostName, ssh connects to the host name itself)\n",
+		ZH: "Hostname: %s（未设置 HostName，ssh 直接连接该名称）\n",
+	},
+	"shell.identityfile_path": {
+		EN: "IdentityFile path: ",
+		ZH: "IdentityFile 路径: ",
+	},
+	"shell.imported_keys": {
+		EN: "\nImported keys:",
+		ZH: "\n已导入的密钥:",
+	},
+	"shell.info_id_alias_hostname_ip_show": {
+		EN: "  info <id|alias|hostname|ip> - Show host info by any identifier",
+		ZH: "  info <编号|别名|主机名|IP> - 按任意标识查看主机详情",
+	},
+	"shell.ip_hidden_proxy_fake_ip_address": {
+		EN: "IP: (hidden: proxy fake-ip address)",
+		ZH: "IP: （已隐藏：代理返回的 fake-ip 地址）",
+	},
+	"shell.jump_host_user_host_or_just": {
+		EN: "Jump host (user@host or just host): ",
+		ZH: "跳板机（user@host 或 host）: ",
+	},
+	"shell.key_for_this_host_number_or": {
+		EN: "Key for this host (number or alias, Enter = any key in the agent): ",
+		ZH: "该主机使用的密钥（编号或别名，回车表示可用 agent 中任意密钥）: ",
+	},
+	"shell.list_r_list_all_ssh_hosts": {
+		EN: "  list [-r]         - List all SSH hosts (-r: resolve IP addresses)",
+		ZH: "  list [-r]         - 列出所有主机（-r：解析 IP 地址）",
+	},
+	"shell.no_host_block_found_in_ssh": {
+		EN: "\nNo Host * block found in ~/.ssh/config",
+		ZH: "\n~/.ssh/config 中没有 Host * 配置块",
+	},
+	"shell.port_22": {
+		EN: "Port [22]: ",
+		ZH: "端口 [22]: ",
+	},
+	"shell.port_22_default": {
+		EN: "Port: 22 (default)\n",
+		ZH: "Port: 22（默认）\n",
+	},
+	"shell.press_enter_to_keep_current_value": {
+		EN: "Press Enter to keep current value, or type new value",
+		ZH: "回车保留当前值，或输入新值",
+	},
+	"shell.press_enter_to_keep_current_value_2": {
+		EN: "Press Enter to keep current value, type new value to change, or '-' to clear",
+		ZH: "回车保留当前值，输入新值修改，输入 - 清除",
+	},
+	"shell.private_key_configuration": {
+		EN: "\nPrivate Key Configuration:",
+		ZH: "\n私钥配置:",
+	},
+	"shell.proxy_configuration": {
+		EN: "\nProxy Configuration:",
+		ZH: "\n代理配置:",
+	},
+	"shell.save_changes_y_n": {
+		EN: "\nSave changes? [Y/n]: ",
+		ZH: "\n保存修改？[Y/n]: ",
+	},
+	"shell.save_global_configuration_y_n": {
+		EN: "Save global configuration? [Y/n]: ",
+		ZH: "保存全局配置？[Y/n]: ",
+	},
+	"shell.save_this_configuration_y_n": {
+		EN: "\nSave this configuration? [Y/n]: ",
+		ZH: "\n保存该配置？[Y/n]: ",
+	},
+	"shell.search_term_search_hosts_by_name": {
+		EN: "  search <term>     - Search hosts by name/alias/hostname",
+		ZH: "  search <关键词>   - 按名称/别名/主机名搜索",
+	},
+	"shell.set_s_s": {
+		EN: "\n✓ Set %s = %s\n",
+		ZH: "\n✓ 已设置 %s = %s\n",
+	},
+	"shell.shortcuts_type_host_name_directly_to": {
+		EN: "Shortcuts: Type host name directly to connect",
+		ZH: "快捷方式：直接输入主机名即可连接",
+	},
+	"shell.show_host_show_host_details": {
+		EN: "  show <host>       - Show host details",
+		ZH: "  show <主机>       - 查看主机详情",
+	},
+	"shell.socks5_proxy_host": {
+		EN: "SOCKS5 proxy host: ",
+		ZH: "SOCKS5 代理主机: ",
+	},
+	"shell.socks5_proxy_port_1080": {
+		EN: "SOCKS5 proxy port [1080]: ",
+		ZH: "SOCKS5 代理端口 [1080]: ",
+	},
+	"shell.summary": {
+		EN: "\n=== Summary ===",
+		ZH: "\n=== 汇总 ===",
+	},
+	"shell.supported_options": {
+		EN: "\nSupported options:",
+		ZH: "\n支持的选项:",
+	},
+	"shell.suspend_suspend_fssh_use_fg_to": {
+		EN: "  suspend           - Suspend fssh (use 'fg' to resume)",
+		ZH: "  suspend           - 挂起 fssh（用 fg 恢复）",
+	},
+	"shell.tip_use_global_edit_for_interactive": {
+		EN: "\nTip: Use 'global edit' for interactive editing with help",
+		ZH: "\n提示：用 global edit 可以交互式编辑并查看说明",
+	},
+	"shell.tool_a": {
+		EN: "Tool [a]: ",
+		ZH: "工具 [a]: ",
+	},
+	"shell.type_to_see_detailed_help_for": {
+		EN: "Type '?' to see detailed help for an option",
+		ZH: "输入 ? 查看该选项的详细说明",
+	},
+	"shell.type_yes_to_confirm_deletion": {
+		EN: "\nType 'yes' to confirm deletion: ",
+		ZH: "\n输入 yes 确认删除: ",
+	},
+	"shell.unknown_global_subcommand_usage": {
+		EN: "Unknown global subcommand. Usage:",
+		ZH: "未知的 global 子命令。用法:",
+	},
+	"shell.unknown_key_try_again": {
+		EN: "Unknown key, try again.",
+		ZH: "没有这个密钥，请重试。",
+	},
+	"shell.unset_s": {
+		EN: "\n✓ Unset %s\n",
+		ZH: "\n✓ 已删除 %s\n",
+	},
+	"shell.unterminated_quote_or_escape": {
+		EN: "unterminated quote or escape",
+		ZH: "引号或转义符未闭合",
+	},
+	"shell.usage_delete_host": {
+		EN: "Usage: delete <host>",
+		ZH: "用法: delete <主机>",
+	},
+	"shell.usage_edit_host": {
+		EN: "Usage: edit <host>",
+		ZH: "用法: edit <主机>",
+	},
+	"shell.usage_global_set_key_value": {
+		EN: "Usage: global set <key> <value>",
+		ZH: "用法: global set <选项> <值>",
+	},
+	"shell.usage_global_unset_key": {
+		EN: "Usage: global unset <key>",
+		ZH: "用法: global unset <选项>",
+	},
+	"shell.usage_info_id_alias_hostname_ip": {
+		EN: "Usage: info <id|alias|hostname|ip>",
+		ZH: "用法: info <编号|别名|主机名|IP>",
+	},
+	"shell.usage_show_host": {
+		EN: "Usage: show <host>",
+		ZH: "用法: show <主机>",
+	},
+	"shell.username_press_enter_to_skip": {
+		EN: "Username [press Enter to skip]: ",
+		ZH: "用户名 [回车跳过]: ",
+	},
+	"shell.using_password_authentication": {
+		EN: "Using password authentication",
+		ZH: "将使用密码登录",
+	},
+	"shell.valid_values_s": {
+		EN: "Valid values: %s\n",
+		ZH: "可选值: %s\n",
+	},
+	"shell.warning_failed_to_reload_hosts_v": {
+		EN: "Warning: Failed to reload hosts: %v\n",
+		ZH: "警告：重新加载主机列表失败: %v\n",
+	},
+	"shell.warning_host_s_already_exists_use": {
+		EN: "Warning: Host '%s' already exists. Use 'edit %s' to modify.\n",
+		ZH: "警告：主机 %s 已存在，请用 edit %s 修改。\n",
+	},
+	"shell.warning_no_keys_imported_yet_run": {
+		EN: "Warning: No keys imported yet. Run 'fssh import' or 'fssh keygen' first.",
+		ZH: "警告：还没有密钥，请先运行 fssh import 或 fssh keygen。",
+	},
+	"shell.you_can_create_one_with_global": {
+		EN: "\nYou can create one with: global edit",
+		ZH: "\n可以用 global edit 创建",
+	},
+	"shell.you_can_now_connect_with_ssh": {
+		EN: "\nYou can now connect with: ssh %s\n",
+		ZH: "\n现在可以连接: ssh %s\n",
+	},
+
+	// ---- errors & misc ----
+	"keychain.canceled": {
+		EN: "Keychain access was canceled",
+		ZH: "已取消钥匙串授权",
+	},
+	"keychain.store_failed": {
+		EN: "could not store the master key in the Keychain (%d attempts): %w",
+		ZH: "无法将主密钥存入钥匙串（已尝试 %d 次）: %w",
+	},
+	"keychain.not_initialized": {
+		EN: "no master key in the Keychain; run `fssh init`",
+		ZH: "钥匙串中没有主密钥，请运行 `fssh init`",
+	},
+	"otpcfg.read": {
+		EN: "cannot read the OTP config: %w",
+		ZH: "读取 OTP 配置失败: %w",
+	},
+	"otpcfg.parse": {
+		EN: "the OTP config is damaged: %w",
+		ZH: "OTP 配置已损坏: %w",
+	},
+	"otpcfg.version": {
+		EN: "unsupported OTP config version: %s",
+		ZH: "不支持的 OTP 配置版本: %s",
+	},
+	"otpcfg.incomplete": {
+		EN: "the OTP config is damaged: required fields are missing",
+		ZH: "OTP 配置已损坏：缺少必要字段",
+	},
+	"otpcfg.write": {
+		EN: "cannot write the OTP config: %w",
+		ZH: "写入 OTP 配置失败: %w",
+	},
+	"auth.unknown_mode": {
+		EN: "unknown auth mode %q in ~/.fssh/auth_mode.json",
+		ZH: "~/.fssh/auth_mode.json 中的认证模式 %q 无效",
+	},
+	"auth.mode_read": {
+		EN: "cannot read ~/.fssh/auth_mode.json: %w",
+		ZH: "读取 ~/.fssh/auth_mode.json 失败: %w",
+	},
+	"auth.mode_parse": {
+		EN: "~/.fssh/auth_mode.json is damaged: %w",
+		ZH: "~/.fssh/auth_mode.json 已损坏: %w",
+	},
+	"agent.started": {
+		EN: "Agent started: %s",
+		ZH: "Agent 已启动: %s",
+	},
+	"agent.started_hint": {
+		EN: "Press Ctrl-C to stop. Run `fssh doctor` if ssh does not use it.",
+		ZH: "按 Ctrl-C 停止。如果 ssh 没有使用它，请运行 `fssh doctor`。",
+	},
+	"cli.config_invalid": {
+		EN: "~/.fssh/config.json is invalid: %w",
+		ZH: "~/.fssh/config.json 格式错误: %w",
+	},
+	"cli.one_passphrase_source": {
+		EN: "use only one of --passphrase, --ask-passphrase, --passphrase-file and --passphrase-stdin",
+		ZH: "--passphrase、--ask-passphrase、--passphrase-file、--passphrase-stdin 只能使用一个",
+	},
+	"configgen.usage": {
+		EN: "usage: fssh config-gen --host <name> [--user u] [--port p] [--write]",
+		ZH: "用法: fssh config-gen --host <名称> [--user 用户] [--port 端口] [--write]",
+	},
+	"configgen.wrote": {
+		EN: "Updated %s",
+		ZH: "已更新 %s",
+	},
 }
